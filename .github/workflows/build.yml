@@ -58,10 +58,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          go build -trimpath -buildvcs=false \\
-            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \\
+          go build -trimpath -buildvcs=false \
+            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \
             -o dist/wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
-          cp dist/wanipv4-watcher-linux-mipsle-softfloat \\
+          cp dist/wanipv4-watcher-linux-mipsle-softfloat \
             "dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mipsle-softfloat"
           file dist/wanipv4-watcher-linux-mipsle-softfloat
 
@@ -72,10 +72,10 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           set -euo pipefail
-          go build -trimpath -buildvcs=false \\
-            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \\
+          go build -trimpath -buildvcs=false \
+            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \
             -o dist/wanipv4-watcher-linux-amd64 ./cmd/wanipv4-watcher
-          cp dist/wanipv4-watcher-linux-amd64 \\
+          cp dist/wanipv4-watcher-linux-amd64 \
             "dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-amd64"
 
       - name: Package source and checksums
@@ -83,8 +83,8 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
-          git archive --format=tar.gz \\
-            --prefix="WANIPv4-Watcher-v${VERSION}/" HEAD \\
+          git archive --format=tar.gz \
+            --prefix="WANIPv4-Watcher-v${VERSION}/" HEAD \
             -o "dist/WANIPv4-Watcher-v${VERSION}-source.tar.gz"
           cat > "dist/WANIPv4-Watcher-BUILD-REPORT-CN-v${VERSION}.md" <<REPORT
           # WANIPv4-Watcher v${VERSION} 构建报告
@@ -102,13 +102,13 @@ jobs:
           说明：此报告来自 GitHub Actions 构建流程。MIPSLE 交叉编译成功不等于已经在真实 K2P Padavan 路由器上完成运行测试；实际 WAN 接口和 QQ SMTP 仍需设备侧验证。
           REPORT
           cd dist
-          sha256sum \\
-            wanipv4-watcher-linux-mipsle-softfloat \\
-            "WANIPv4-Watcher-v${VERSION}-linux-mipsle-softfloat" \\
-            wanipv4-watcher-linux-amd64 \\
-            "WANIPv4-Watcher-v${VERSION}-linux-amd64" \\
-            "WANIPv4-Watcher-v${VERSION}-source.tar.gz" \\
-            "WANIPv4-Watcher-BUILD-REPORT-CN-v${VERSION}.md" \\
+          sha256sum \
+            wanipv4-watcher-linux-mipsle-softfloat \
+            "WANIPv4-Watcher-v${VERSION}-linux-mipsle-softfloat" \
+            wanipv4-watcher-linux-amd64 \
+            "WANIPv4-Watcher-v${VERSION}-linux-amd64" \
+            "WANIPv4-Watcher-v${VERSION}-source.tar.gz" \
+            "WANIPv4-Watcher-BUILD-REPORT-CN-v${VERSION}.md" \
             > checksums.txt
           cp checksums.txt "WANIPv4-Watcher-v${VERSION}-checksums.txt"
           cat checksums.txt
