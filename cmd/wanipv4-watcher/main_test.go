@@ -47,6 +47,9 @@ func TestChooseConsensusRequiresTwoProviders(t *testing.T) {
 	if got := chooseConsensus(map[string]string{"a": "192.168.1.10", "b": "192.168.1.10"}); got != "" {
 		t.Fatalf("private provider results must be rejected, got %q", got)
 	}
+	if got := chooseConsensus(map[string]string{"a": "8.8.8.8", "b": "8.8.8.8", "c": "9.9.9.9", "d": "9.9.9.9"}); got != "" {
+		t.Fatalf("a tied provider result must not form consensus, got %q", got)
+	}
 }
 
 func TestDefaultRouteInterfaces(t *testing.T) {
