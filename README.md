@@ -122,7 +122,10 @@ WAN 与出口地址不一致是异常信号，但不能单凭这一点认定一�
 ```sh
 go test ./...
 go vet ./...
-GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -X main.version=0.1.0' -o wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
+VERSION="$(tr -d '[:space:]' < VERSION)"
+GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 \\
+  go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${VERSION}" \\
+  -o wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
 ```
 
 推送到 `main` 后，GitHub Actions 会运行测试并生成 `linux/mipsle softfloat` 和 `linux/amd64` 二进制。如果 `VERSION` 对应的 `v版本号` 还没有标签，首次构建会创建对应 Release；以后改动代码应先更新 `VERSION`，然后提交到 `main`，或推送匹配的 `v*` 标签发布新版本。Release 附带版本化二进制、稳定下载文件名、源码包、中文构建报告和 `checksums.txt`。
