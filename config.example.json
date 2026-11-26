@@ -1,0 +1,24 @@
+{
+  "wan_interface": "auto",
+  "interval_seconds": 30,
+  "http_timeout_seconds": 8,
+  "external_ip_urls": [
+    "https://api.ipify.org",
+    "https://ipv4.icanhazip.com",
+    "https://checkip.amazonaws.com"
+  ],
+  "alert_on_private_wan": true,
+  "notify_on_start": true,
+  "notify_on_recovery": true,
+  "log_file": "/tmp/wanipv4-watcher.log",
+  "smtp": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "username": "YOUR_QQ_MAIL@qq.com",
+    "password": "REPLACE_WITH_QQ_MAIL_AUTH_CODE",
+    "from": "YOUR_QQ_MAIL@qq.com",
+    "to": [
+      "YOUR_RECIPIENT_MAIL@example.com"
+    ]
+  }
+}
