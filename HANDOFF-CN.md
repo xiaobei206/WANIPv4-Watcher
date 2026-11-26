@@ -1,4 +1,4 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.1.4
+# HANDOFF-CN — WANIPv4-Watcher v0.1.5
 
 ## 项目目标
 
@@ -11,7 +11,7 @@
 - `cmd/wanipv4-watcher/main.go`：Go 主程序。
 - `cmd/wanipv4-watcher/main_test.go`：公共 IPv4 分类、出口地址共识、默认路由解析测试。
 - `config.example.json`：不含实际凭证的配置模板。
-- `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：推荐的 Padavan 原生网页启动脚本模板。
+- `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：精简版 Padavan 网页启动代码；只填写邮件变量，启动器与二进制由 GitHub 托管。
 - `scripts/install-padavan.sh`：旧版 SSH 安装器（兼容保留），不会覆盖现有配置或清空 `started_script.sh`。
 - `scripts/bootstrap.sh`：开机更新下载、SHA-256 校验、启动/停止/状态检查。
 - `scripts/uninstall-padavan.sh`：删除由本工具添加的开机钩子，保留邮箱配置。
@@ -33,4 +33,4 @@
 
 ## 当前状态
 
-默认调度为路由器本地时间每天 07:00 和 19:00 各检查一次，程序启动时不额外检测。公网检测固定使用 IPIP、3322、CIP.cc、IP9 四个来源；旧配置里的海外检测 URL 会被运行时替换掉。真实 K2P WAN 接口、系统时区和 QQ SMTP 仍需实机验证。
+默认调度为路由器本地时间每天 07:00 和 19:00 各检查一次，程序启动时不额外检测。公网检测固定使用 IPIP、3322、CIP.cc、IP9 四个来源；旧配置里的海外检测 URL 会被运行时替换掉。Padavan 启动文本只需写三项邮箱变量并调用 GitHub 上的 `scripts/bootstrap.sh`；该脚本自动生成 RAM 配置、下载/校验 Go 二进制、设置可执行权限并启动。真实 K2P WAN 接口、系统时区和 QQ SMTP 仍需实机验证。

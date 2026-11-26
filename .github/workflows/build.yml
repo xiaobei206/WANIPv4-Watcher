@@ -49,6 +49,14 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Check shell script syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/bootstrap.sh
+          sh -n scripts/install-padavan.sh
+          sh -n scripts/uninstall-padavan.sh
+
       - name: Build Linux MIPSLE soft-float for Padavan
         env:
           GOOS: linux

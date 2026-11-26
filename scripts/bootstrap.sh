@@ -1,13 +1,10 @@
 #!/bin/sh
 # Runtime bootstrap for Padavan. The executable and logs stay under /tmp (RAM).
 set -eu
+umask 077
 
 REPO="xiaobei206/WANIPv4-Watcher"
 CONFIG="${WANIPV4_CONFIG:-/tmp/wanipv4-watcher.json}"
-# Backward compatibility for installs created by the legacy CLI installer.
-if [ ! -r "$CONFIG" ] && [ "$CONFIG" = "/tmp/wanipv4-watcher.json" ] && [ -r "/etc/storage/wanipv4-watcher.json" ]; then
-    CONFIG="/etc/storage/wanipv4-watcher.json"
-fi
 BIN="/tmp/wanipv4-watcher"
 NEW_BIN="/tmp/wanipv4-watcher.new"
 CHECKSUMS="/tmp/wanipv4-watcher-checksums.txt"
@@ -98,8 +95,61 @@ case "${1:-start}" in
     *) say "usage: $0 [start|stop|status]"; exit 2 ;;
 esac
 
+# Short Padavan Web UI startup snippets pass SMTP settings through environment
+# variables. The launcher creates its own private runtime JSON config in /tmp.
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+if [ -n "${WANIPV4_SMTP_USER:-}" ] || [ -n "${WANIPV4_SMTP_AUTH_CODE:-}" ] || [ -n "${WANIPV4_SMTP_TO:-}" ]; then
+    if [ -z "${WANIPV4_SMTP_USER:-}" ] || [ -z "${WANIPV4_SMTP_AUTH_CODE:-}" ] || [ -z "${WANIPV4_SMTP_TO:-}" ]; then
+        say "ERROR: set WANIPV4_SMTP_USER, WANIPV4_SMTP_AUTH_CODE and WANIPV4_SMTP_TO together."
+        exit 1
+    fi
+    if printf '%s\n' "$WANIPV4_SMTP_USER" "$WANIPV4_SMTP_AUTH_CODE" "$WANIPV4_SMTP_TO" | grep -E 'YOUR_|REPLACE_WITH|example.com' >/dev/null 2>&1; then
+        say "ERROR: SMTP variables still contain example placeholders."
+        exit 1
+    fi
+
+    CONFIG="${WANIPV4_CONFIG:-/tmp/wanipv4-watcher.json}"
+    SMTP_USER_JSON=$(json_escape "$WANIPV4_SMTP_USER")
+    SMTP_AUTH_JSON=$(json_escape "$WANIPV4_SMTP_AUTH_CODE")
+    SMTP_TO_JSON=$(json_escape "$WANIPV4_SMTP_TO")
+    cat > "$CONFIG" <<WANIPV4_CONFIG
+{
+  "wan_interface": "auto",
+  "check_times": ["07:00", "19:00"],
+  "http_timeout_seconds": 8,
+  "external_ip_urls": [
+    "https://myip.ipip.net",
+    "http://ip.3322.net",
+    "https://cip.cc",
+    "https://ip9.com.cn/get"
+  ],
+  "alert_on_private_wan": true,
+  "notify_on_start": true,
+  "notify_on_recovery": true,
+  "log_file": "/tmp/wanipv4-watcher.log",
+  "smtp": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "username": "$SMTP_USER_JSON",
+    "password": "$SMTP_AUTH_JSON",
+    "from": "$SMTP_USER_JSON",
+    "to": ["$SMTP_TO_JSON"]
+  }
+}
+WANIPV4_CONFIG
+    chmod 600 "$CONFIG"
+    unset WANIPV4_SMTP_USER WANIPV4_SMTP_AUTH_CODE WANIPV4_SMTP_TO
+    say "generated runtime config at $CONFIG (credentials stored only in RAM)"
+elif [ ! -r "$CONFIG" ] && [ "$CONFIG" = "/tmp/wanipv4-watcher.json" ] && [ -r "/etc/storage/wanipv4-watcher.json" ]; then
+    # Backward compatibility for the legacy SSH installer.
+    CONFIG="/etc/storage/wanipv4-watcher.json"
+fi
+
 if [ ! -r "$CONFIG" ]; then
-    say "ERROR: config not found at $CONFIG. Run scripts/install-padavan.sh, then configure SMTP."
+    say "ERROR: config not found at $CONFIG. Set SMTP variables in the Padavan startup script or configure the legacy JSON file."
     exit 1
 fi
 if grep -E 'YOUR_QQ_MAIL|REPLACE_WITH|YOUR_RECIPIENT_MAIL|example.com' "$CONFIG" >/dev/null 2>&1; then

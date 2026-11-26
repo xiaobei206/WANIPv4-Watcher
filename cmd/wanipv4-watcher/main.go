@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-var version = "0.1.4"
+var version = "0.1.5"
 
 const defaultConfigPath = "/etc/storage/wanipv4-watcher.json"
 const maxResponseBytes = 64 * 1024

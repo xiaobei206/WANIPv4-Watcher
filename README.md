@@ -1,6 +1,6 @@
 # WANIPv4-Watcher
 
-**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.4`。
+**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.5`。
 
 它定期读取路由器默认 IPv4 路由对应网卡的地址，并与 IPIP、3322、CIP.cc、IP9 四个国内服务返回的公网 IPv4 交叉验证。如果 WAN 口地址变成私网、运营商共享地址（CGNAT），或与公网出口地址持续不一致，就发送 QQ 邮件告警；恢复一致后发送恢复通知。
 
@@ -31,7 +31,7 @@
 
 ## 推荐安装：使用 Padavan 原生“路由器启动后执行”脚本
 
-在 Padavan Web 管理页打开“参数设置 → 脚本”，找到“在路由器启动后执行”。保留你已有的 TCP 参数、缓存和 udpxy 命令，只把仓库文档 [Padavan 网页启动脚本模板](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)中的监控区块追加到末尾，然后点击应用/保存。每次开机都会在 `/tmp` 重建邮箱配置，等待 5 秒后下载启动脚本和 Go 二进制；配置与程序不需要额外写入闪存。
+在 Padavan Web 管理页打开“参数设置 → 脚本 → 在路由器启动后执行”，把 [精简调用脚本](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)中的短代码追加到末尾，仅填写三个邮件变量。下载二进制、SHA-256 校验、赋予执行权限、检查配置和启动进程均由 GitHub 上的 `scripts/bootstrap.sh` 负责，不需要手动下载或复制 Go 程序。
 
 此方式下，配置路径为 `/tmp/wanipv4-watcher.json`。真实 QQ 邮箱授权码只写在路由器的 Padavan 脚本配置中，不要提交到 GitHub。
 
@@ -136,7 +136,7 @@ WAN 与出口地址不一致是异常信号，但不能单凭这一点认定一�
 - `config.example.json`：本地配置模板（不含真实凭证）。
 - `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：推荐的 Padavan 网页启动脚本模板。
 - `scripts/install-padavan.sh`：旧版 SSH 安装器（兼容保留）。
-- `scripts/bootstrap.sh`：开机下载、校验、启动、停止和状态检查。
+- `scripts/bootstrap.sh`：根据路由器启动脚本传入的邮件变量在 RAM 生成配置，然后下载 Release 二进制、SHA-256 校验、赋予执行权限、启动、停止和状态检查。
 - `scripts/uninstall-padavan.sh`：卸载启动钩子，保留邮箱配置。
 - `docs/PADAVAN-INSTALL-CN.md`：安装细节。
 - `docs/TROUBLESHOOTING-CN.md`：排错说明。

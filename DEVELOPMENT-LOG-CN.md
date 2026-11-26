@@ -2,6 +2,14 @@
 
 本文件累计记录 WANIPv4-Watcher 的实现和验证，不按每次改动另建日志文件。
 
+## v0.1.5 — 将 Padavan 启动逻辑收回 GitHub
+
+- 简化 Padavan Web UI 启动区块：路由器只保留邮件配置变量，并下载/调用 GitHub 上的 `scripts/bootstrap.sh`，不再需要粘贴整份 JSON 和长篇启动逻辑。
+- 启动器根据导出的 SMTP 用户、QQ 邮箱授权码和收件地址，在 `/tmp` 生成权限为 600 的 JSON 配置；凭证变量在启动 Go 进程前解除导出/清除，不写进仓库。
+- 启动器继续从 GitHub Release 下载 MIPSLE soft-float Go 二进制和 SHA-256 清单，校验后 `chmod 700` 并启动。
+- README、交接索引和 Padavan 中文文档已更新；新增 shell 语法检查步骤。
+- 待 GitHub Actions 运行并发布 v0.1.5；K2P 实机网络访问和邮件投递仍需设备侧验证。
+
 ## v0.1.4 — 固定四个国内公网 IP 检测源
 
 - 将检测源固定为 IPIP (`https://myip.ipip.net`)、3322 (`http://ip.3322.net`)、CIP.cc (`https://cip.cc`) 和 IP9 (`https://ip9.com.cn/get`)，移除海外检测源。

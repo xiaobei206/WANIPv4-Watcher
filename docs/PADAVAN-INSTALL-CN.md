@@ -1,6 +1,6 @@
 # K2P Padavan 安装说明
 
-> 新部署优先使用 [Padavan 网页启动脚本模板](PADAVAN-WEB-STARTUP-SCRIPT-CN.md)，它更符合 K2P 的“参数设置 → 脚本 → 在路由器启动后执行”入口。下面的 SSH 安装器章节仅用于兼容旧方案。
+> 新部署优先使用 [精简版 Padavan 网页启动脚本](PADAVAN-WEB-STARTUP-SCRIPT-CN.md)。路由器启动文本只需填写邮件变量并调用 GitHub 上的启动器；下面的 SSH 安装器章节仅用于兼容旧方案。
 
 ## 安装前提
 
