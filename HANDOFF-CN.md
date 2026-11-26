@@ -1,4 +1,4 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.1.2
+# HANDOFF-CN — WANIPv4-Watcher v0.1.3
 
 ## 项目目标
 
@@ -11,7 +11,8 @@
 - `cmd/wanipv4-watcher/main.go`：Go 主程序。
 - `cmd/wanipv4-watcher/main_test.go`：公共 IPv4 分类、出口地址共识、默认路由解析测试。
 - `config.example.json`：不含实际凭证的配置模板。
-- `scripts/install-padavan.sh`：一次性安装器；不会覆盖现有配置或清空 `started_script.sh`。
+- `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：推荐的 Padavan 原生网页启动脚本模板。
+- `scripts/install-padavan.sh`：旧版 SSH 安装器（兼容保留），不会覆盖现有配置或清空 `started_script.sh`。
 - `scripts/bootstrap.sh`：开机更新下载、SHA-256 校验、启动/停止/状态检查。
 - `scripts/uninstall-padavan.sh`：删除由本工具添加的开机钩子，保留邮箱配置。
 - `docs/PADAVAN-INSTALL-CN.md`：实机安装和卸载步骤。
@@ -22,7 +23,8 @@
 
 ## 部署关键点
 
-- 配置路径：`/etc/storage/wanipv4-watcher.json`。
+- 推荐网页启动方式的配置路径：`/tmp/wanipv4-watcher.json`（每次开机重新生成）。
+- 旧版 SSH 安装方式的配置路径：`/etc/storage/wanipv4-watcher.json`。
 - 持久化启动入口：`/etc/storage/started_script.sh`。
 - 程序路径：`/tmp/wanipv4-watcher`。
 - 日志路径：`/tmp/wanipv4-watcher.log`、`/tmp/wanipv4-watcher-bootstrap.log`。
@@ -31,4 +33,4 @@
 
 ## 当前状态
 
-本地测试与 MIPSLE soft-float 交叉编译已通过。实机网络、QQ SMTP 和 GitHub Actions 首次发布仍需在对应环境验证；不得把本地交叉编译成功说成路由器实机已测试。
+默认调度为路由器本地时间每天 07:00 和 19:00 各检查一次，程序启动时不额外检测。真实 K2P WAN 接口、系统时区和 QQ SMTP 仍需实机验证。

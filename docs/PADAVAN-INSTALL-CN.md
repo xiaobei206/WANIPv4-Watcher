@@ -1,5 +1,7 @@
 # K2P Padavan 安装说明
 
+> 新部署优先使用 [Padavan 网页启动脚本模板](PADAVAN-WEB-STARTUP-SCRIPT-CN.md)，它更符合 K2P 的“参数设置 → 脚本 → 在路由器启动后执行”入口。下面的 SSH 安装器章节仅用于兼容旧方案。
+
 ## 安装前提
 
 1. 以 root/admin 身份通过 SSH 登录路由器。
@@ -18,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scr
 编辑配置：
 
 ```sh
-vi /etc/storage/wanipv4-watcher.json
+vi /tmp/wanipv4-watcher.json
 ```
 
 需要设置 `smtp.username`、`smtp.password`、`smtp.from` 和 `smtp.to`。不要把真实授权码贴到 GitHub Issue、公开日志或聊天截图里。
@@ -47,13 +49,13 @@ sh /tmp/wanipv4-watcher-bootstrap.sh status
 测试邮件：
 
 ```sh
-/tmp/wanipv4-watcher -config /etc/storage/wanipv4-watcher.json -test-email
+/tmp/wanipv4-watcher -config /tmp/wanipv4-watcher.json -test-email
 ```
 
 测试单次 WAN 检测：
 
 ```sh
-/tmp/wanipv4-watcher -config /etc/storage/wanipv4-watcher.json -once
+/tmp/wanipv4-watcher -config /tmp/wanipv4-watcher.json -once
 ```
 
 日志位于 `/tmp/wanipv4-watcher.log`；启动脚本的诊断日志位于 `/tmp/wanipv4-watcher-bootstrap.log`。`/tmp` 是临时目录，重启后内容消失是预期行为。

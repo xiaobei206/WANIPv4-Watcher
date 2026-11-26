@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestIsPublicIPv4(t *testing.T) {
@@ -70,5 +71,44 @@ func TestDefaultRouteInterfaces(t *testing.T) {
 	want := []string{"ppp0", "eth0", "lan0"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("default route interfaces = %#v, want %#v", got, want)
+	}
+}
+
+
+func TestNextScheduledCheck(t *testing.T) {
+	loc := time.FixedZone("CST", 8*60*60)
+	schedules := []string{"07:00", "19:00"}
+	tests := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{"before morning check", time.Date(2026, 11, 26, 6, 59, 0, 0, loc), time.Date(2026, 11, 26, 7, 0, 0, 0, loc)},
+		{"exactly at morning check skips to evening", time.Date(2026, 11, 26, 7, 0, 0, 0, loc), time.Date(2026, 11, 26, 19, 0, 0, 0, loc)},
+		{"before evening check", time.Date(2026, 11, 26, 18, 59, 0, 0, loc), time.Date(2026, 11, 26, 19, 0, 0, 0, loc)},
+		{"after evening check wraps to next morning", time.Date(2026, 11, 26, 19, 0, 1, 0, loc), time.Date(2026, 11, 27, 7, 0, 0, 0, loc)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := nextScheduledCheck(tt.now, schedules)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Equal(tt.want) {
+				t.Fatalf("nextScheduledCheck() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateCheckTimes(t *testing.T) {
+	if err := validateCheckTimes([]string{"07:00", "19:00"}); err != nil {
+		t.Fatalf("valid schedule rejected: %v", err)
+	}
+	if err := validateCheckTimes([]string{"7:00", "19:00"}); err == nil {
+		t.Fatal("non-zero-padded hour should be rejected")
+	}
+	if err := validateCheckTimes([]string{"07:00", "07:00"}); err == nil {
+		t.Fatal("duplicate times should be rejected")
 	}
 }

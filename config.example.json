@@ -1,6 +1,6 @@
 {
   "wan_interface": "auto",
-  "interval_seconds": 30,
+  "check_times": ["07:00", "19:00"],
   "http_timeout_seconds": 8,
   "external_ip_urls": [
     "https://api.ipify.org",

@@ -3,7 +3,11 @@
 set -eu
 
 REPO="xiaobei206/WANIPv4-Watcher"
-CONFIG="/etc/storage/wanipv4-watcher.json"
+CONFIG="${WANIPV4_CONFIG:-/tmp/wanipv4-watcher.json}"
+# Backward compatibility for installs created by the legacy CLI installer.
+if [ ! -r "$CONFIG" ] && [ "$CONFIG" = "/tmp/wanipv4-watcher.json" ] && [ -r "/etc/storage/wanipv4-watcher.json" ]; then
+    CONFIG="/etc/storage/wanipv4-watcher.json"
+fi
 BIN="/tmp/wanipv4-watcher"
 NEW_BIN="/tmp/wanipv4-watcher.new"
 CHECKSUMS="/tmp/wanipv4-watcher-checksums.txt"

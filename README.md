@@ -1,6 +1,6 @@
 # WANIPv4-Watcher
 
-**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.2`。
+**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.3`。
 
 它定期读取路由器默认 IPv4 路由对应网卡的地址，并与至少两个独立公网 IPv4 查询服务的结果进行交叉验证。如果 WAN 口地址变成私网、运营商共享地址（CGNAT），或与公网出口地址持续不一致，就发送 QQ 邮件告警；恢复一致后发送恢复通知。
 
@@ -8,16 +8,23 @@
 
 - 使用 Go 标准库实现，不依赖第三方 Go 模块。
 - 针对 K2P 常见的 MIPS little-endian、soft-float 环境交叉编译；二进制静态链接，运行文件放在 `/tmp`（内存文件系统），不会把可执行文件反复写入闪存。
-- 每 30 秒检查一次；公网 IP 必须至少被两个查询源一致确认，避免单个检测源临时故障造成误报。
+- 默认每天上午 07:00、晚上 19:00 各检查一次，不会在程序启动时额外检查；时间以路由器系统本地时钟为准。旧版配置没有 `check_times` 时会自动采用这两个时刻。
+- 公网 IP 必须至少被两个查询源一致确认，避免单个检测源临时故障造成误报。
 - 区分 `private_wan`、`mismatch`、`healthy` 与 `unknown`。检测源不足或 WAN 没有地址时不会假装判断成功，也不会发送虚假的“恢复”通知。
 - 使用 QQ 邮箱 SMTP SSL（465 端口）；密码必须是 QQ 邮箱授权码。
 - SHA-256 校验下载的二进制文件后才执行。
-- 日志限制在 `/tmp/wanipv4-watcher.log` 和一个轮转备份内；配置保存在 Padavan 的 `/etc/storage`。
+- 日志限制在 `/tmp/wanipv4-watcher.log` 和一个轮转备份内；推荐网页启动方式下，配置在每次开机时于 `/tmp` 重建。
 - GitHub Actions 自动测试、交叉编译并发布版本资产。
 
-## 一键安装到 Padavan
+## 推荐安装：使用 Padavan 原生“路由器启动后执行”脚本
 
-先确保路由器能正常访问 GitHub，并通过 SSH 以管理员/root 身份登录 K2P。将下面命令粘贴到路由器 SSH 终端：
+在 Padavan Web 管理页打开“参数设置 → 脚本”，找到“在路由器启动后执行”。保留你已有的 TCP 参数、缓存和 udpxy 命令，只把仓库文档 [Padavan 网页启动脚本模板](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)中的监控区块追加到末尾，然后点击应用/保存。每次开机都会在 `/tmp` 重建邮箱配置，等待 5 秒后下载启动脚本和 Go 二进制；配置与程序不需要额外写入闪存。
+
+此方式下，配置路径为 `/tmp/wanipv4-watcher.json`。真实 QQ 邮箱授权码只写在路由器的 Padavan 脚本配置中，不要提交到 GitHub。
+
+### 旧版 SSH 安装方式（兼容保留）
+
+如果你此前已经安装旧版命令行启动钩子，原安装器仍可用于兼容维护；新部署优先使用上面的 Padavan 原生脚本入口。先确保路由器能正常访问 GitHub，并通过 SSH 以管理员/root 身份登录 K2P。将下面命令粘贴到路由器 SSH 终端：
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/install-padavan.sh | sh
@@ -36,7 +43,7 @@ wget -qO- https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scri
 编辑路由器上的配置文件：
 
 ```sh
-vi /etc/storage/wanipv4-watcher.json
+vi /tmp/wanipv4-watcher.json
 ```
 
 至少修改以下字段：
@@ -73,7 +80,7 @@ wget -q -O /tmp/wanipv4-watcher-bootstrap.sh https://raw.githubusercontent.com/x
 验证 QQ 邮件发送：
 
 ```sh
-/tmp/wanipv4-watcher -config /etc/storage/wanipv4-watcher.json -test-email
+/tmp/wanipv4-watcher -config /tmp/wanipv4-watcher.json -test-email
 ```
 
 查看运行状态与日志：
@@ -84,7 +91,7 @@ tail -n 80 /tmp/wanipv4-watcher.log
 tail -n 80 /tmp/wanipv4-watcher-bootstrap.log
 ```
 
-`started_script.sh` 是 Padavan 的持久化启动入口，程序文件本身放在 `/tmp`。若重启后需要确认是否成功下载启动，查看 `/tmp/wanipv4-watcher-bootstrap.log`。如果希望再次触发当前会话的启动钩子，先确认脚本不会影响其他自定义启动动作；也可直接运行上面的 bootstrap 命令。
+使用推荐的 Padavan 网页脚本方式时，Padavan 的“路由器启动后执行”文本框就是持久化启动入口，程序和运行时配置都放在 `/tmp`。旧版 SSH 安装方式仍使用 `started_script.sh`。若重启后需要确认是否成功下载启动，查看 `/tmp/wanipv4-watcher-bootstrap.log`。如果希望再次触发当前会话的启动钩子，先确认脚本不会影响其他自定义启动动作；也可直接运行上面的 bootstrap 命令。
 
 ## WAN 网卡自动识别
 
@@ -114,7 +121,8 @@ WAN 与出口地址不一致是异常信号，但不能单凭这一点认定一�
 
 - `cmd/wanipv4-watcher/main.go`：监控、公网检测、SMTP 告警。
 - `config.example.json`：本地配置模板（不含真实凭证）。
-- `scripts/install-padavan.sh`：一次性安装持久化启动钩子。
+- `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：推荐的 Padavan 网页启动脚本模板。
+- `scripts/install-padavan.sh`：旧版 SSH 安装器（兼容保留）。
 - `scripts/bootstrap.sh`：开机下载、校验、启动、停止和状态检查。
 - `scripts/uninstall-padavan.sh`：卸载启动钩子，保留邮箱配置。
 - `docs/PADAVAN-INSTALL-CN.md`：安装细节。

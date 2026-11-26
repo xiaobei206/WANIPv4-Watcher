@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-var version = "0.1.2"
+var version = "0.1.3"
 
 const defaultConfigPath = "/etc/storage/wanipv4-watcher.json"
 const maxResponseBytes = 64 * 1024
@@ -45,7 +45,9 @@ type SMTPConfig struct {
 
 type Config struct {
 	WANInterface       string     `json:"wan_interface"`
+	// IntervalSeconds is retained only to accept older configs; scheduled checks supersede it.
 	IntervalSeconds    int        `json:"interval_seconds"`
+	CheckTimes         []string   `json:"check_times"`
 	HTTPTimeoutSeconds int        `json:"http_timeout_seconds"`
 	ExternalIPURLs     []string   `json:"external_ip_urls"`
 	AlertOnPrivateWAN  bool       `json:"alert_on_private_wan"`
@@ -182,15 +184,62 @@ func loadConfig(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("invalid trailing JSON data: %w", err)
 	}
+	// Older configs did not define check_times. Default them to the requested
+	// two daily checks and ignore the deprecated interval_seconds setting.
+	if len(cfg.CheckTimes) == 0 {
+		cfg.CheckTimes = []string{"07:00", "19:00"}
+	}
 	return cfg, nil
+}
+
+func validateCheckTimes(times []string) error {
+	if len(times) == 0 {
+		return errors.New("check_times must contain at least one local HH:MM time")
+	}
+	if len(times) > 8 {
+		return errors.New("check_times may contain at most 8 entries")
+	}
+	seen := make(map[string]bool, len(times))
+	for _, value := range times {
+		parsed, err := time.Parse("15:04", value)
+		if err != nil || parsed.Format("15:04") != value {
+			return fmt.Errorf("invalid check_times entry %q: use 24-hour HH:MM, for example 07:00", value)
+		}
+		if seen[value] {
+			return fmt.Errorf("duplicate check_times entry %q", value)
+		}
+		seen[value] = true
+	}
+	return nil
+}
+
+// nextScheduledCheck returns the earliest configured wall-clock time strictly
+// after now, using the router process local time zone. It does not run a check
+// immediately at startup; it waits for the next scheduled time.
+func nextScheduledCheck(now time.Time, schedules []string) (time.Time, error) {
+	if err := validateCheckTimes(schedules); err != nil {
+		return time.Time{}, err
+	}
+	var next time.Time
+	for _, value := range schedules {
+		parsed, _ := time.Parse("15:04", value)
+		candidate := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+		if !candidate.After(now) {
+			candidate = candidate.AddDate(0, 0, 1)
+		}
+		if next.IsZero() || candidate.Before(next) {
+			next = candidate
+		}
+	}
+	return next, nil
 }
 
 func validateConfig(c Config) error {
 	if c.WANInterface == "" {
 		return errors.New("wan_interface must be 'auto' or a Linux interface name")
 	}
-	if c.IntervalSeconds < 10 || c.IntervalSeconds > 86400 {
-		return errors.New("interval_seconds must be between 10 and 86400")
+	if err := validateCheckTimes(c.CheckTimes); err != nil {
+		return err
 	}
 	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 {
 		return errors.New("http_timeout_seconds must be between 2 and 60")
@@ -232,7 +281,7 @@ func validateConfig(c Config) error {
 }
 
 func runMonitor(cfg Config) {
-	log.Printf("WANIPv4-Watcher %s started; interval=%ds; interface=%s", version, cfg.IntervalSeconds, cfg.WANInterface)
+	log.Printf("WANIPv4-Watcher %s started; check_times=%s (router local time); interface=%s", version, strings.Join(cfg.CheckTimes, ","), cfg.WANInterface)
 	var previousStatus string
 	var previousDetail string
 	var pending []Notice
@@ -241,11 +290,10 @@ func runMonitor(cfg Config) {
 		obs := observe(cfg)
 		logObservation(obs)
 		if obs.Status == "unknown" {
-			// Unknown means we cannot safely determine whether IPv4 changed.
-			// Do not send a false alarm or recovery message.
 			return
 		}
 		if previousStatus == "" {
+			// First observation is at the next scheduled check, not at startup.
 			if cfg.NotifyOnStart && shouldAlert(cfg, obs) {
 				pending = append(pending, makeAlertNotice(obs))
 			}
@@ -259,20 +307,29 @@ func runMonitor(cfg Config) {
 				pending = append(pending, makeAlertNotice(obs))
 			}
 		} else if obs.Status != "healthy" && obs.Detail != previousDetail && shouldAlert(cfg, obs) {
-			// A changed WAN/external address while still abnormal is useful context.
 			pending = append(pending, makeAlertNotice(obs))
 		}
 		previousStatus, previousDetail = obs.Status, obs.Detail
 
-		// Retry unsent notices on the next poll. Bound the in-memory queue so a
-		// prolonged SMTP outage cannot consume router RAM.
 		if len(pending) > 8 {
 			pending = pending[len(pending)-8:]
 		}
 		if len(pending) > 0 {
 			n := pending[0]
-			if err := sendEmail(cfg.SMTP, n); err != nil {
-				log.Printf("email send failed (will retry): %v", err)
+			var sendErr error
+			// Retry mail delivery without repeating the WAN/IP check.
+			for attempt := 1; attempt <= 3; attempt++ {
+				sendErr = sendEmail(cfg.SMTP, n)
+				if sendErr == nil {
+					break
+				}
+				log.Printf("email send failed (attempt %d/3): %v", attempt, sendErr)
+				if attempt < 3 {
+					time.Sleep(10 * time.Second)
+				}
+			}
+			if sendErr != nil {
+				log.Printf("email will be retried at the next scheduled check")
 			} else {
 				log.Printf("email sent: %s", n.Subject)
 				pending = pending[1:]
@@ -280,10 +337,26 @@ func runMonitor(cfg Config) {
 		}
 	}
 
-	check()
-	ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
+	for {
+		next, err := nextScheduledCheck(time.Now(), cfg.CheckTimes)
+		if err != nil {
+			log.Printf("cannot determine next check time: %v", err)
+			time.Sleep(time.Minute)
+			continue
+		}
+		wait := time.Until(next)
+		if wait < 0 {
+			wait = 0
+		}
+		log.Printf("next WAN IPv4 check scheduled at %s (router local time)", next.Format("2006-01-02 15:04:05 MST"))
+		timer := time.NewTimer(wait)
+		<-timer.C
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
 		check()
 	}
 }
