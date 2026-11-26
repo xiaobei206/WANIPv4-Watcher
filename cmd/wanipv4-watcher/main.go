@@ -624,7 +624,7 @@ func (a *implicitTLSPlainAuth) Start(server *smtp.ServerInfo) (string, []byte, e
 	if server == nil || server.Name == "" {
 		return "", nil, errors.New("missing SMTP server identity")
 	}
-	return "PLAIN", []byte("\\x00" + a.username + "\\x00" + a.password), nil
+	return "PLAIN", []byte("\x00" + a.username + "\x00" + a.password), nil
 }
 
 func (a *implicitTLSPlainAuth) Next(_ []byte, more bool) ([]byte, error) {
