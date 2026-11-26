@@ -15,7 +15,7 @@
 curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/install-padavan.sh | sh
 ```
 
-安装器只在配置文件不存在时创建配置模板，保留已有配置，并刷新本工具自己的启动钩子。它会调用 `/sbin/mtd_storage.sh save` 将修改提交到 Padavan 闪存；如果找不到保存命令或保存失败，会明确提示，不会假装安装已持久化。
+安装器只在配置文件不存在时创建配置模板，保留已有配置，并刷新本工具自己的启动钩子。程序运行时固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 检测源；即使旧配置仍保留海外 URL，也会在读取后自动替换，不会请求这些海外源。它会调用 `/sbin/mtd_storage.sh save` 将修改提交到 Padavan 闪存；如果找不到保存命令或保存失败，会明确提示，不会假装安装已持久化。
 
 编辑配置：
 

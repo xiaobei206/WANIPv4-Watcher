@@ -13,6 +13,8 @@
 
 不要把替换过真实授权码的脚本内容提交到 GitHub、截图或公开聊天。授权码会随 Padavan 网页启动脚本保存在路由器的持久化配置中；程序运行时的 JSON 配置则只在 /tmp。
 
+公网 IP 检测固定使用 IPIP、3322、CIP.cc、IP9 四个国内来源，不使用海外检测站。升级后的程序也会自动覆盖旧配置中残留的海外检测 URL。注意：3322 公开的 `ip.3322.net` 接口是 HTTP，其结果仍需与其他来源交叉验证。
+
 ## 可追加到脚本末尾的代码
 
 下面是独立区块，不要用它替换整个文本框；它会在后台运行，避免阻塞 Padavan 的启动过程。
@@ -30,9 +32,10 @@
   "check_times": ["07:00", "19:00"],
   "http_timeout_seconds": 8,
   "external_ip_urls": [
-    "https://api.ipify.org",
-    "https://ipv4.icanhazip.com",
-    "https://checkip.amazonaws.com"
+    "https://myip.ipip.net",
+    "http://ip.3322.net",
+    "https://cip.cc",
+    "https://ip9.com.cn/get"
   ],
   "alert_on_private_wan": true,
   "notify_on_start": true,

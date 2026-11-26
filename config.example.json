@@ -3,9 +3,10 @@
   "check_times": ["07:00", "19:00"],
   "http_timeout_seconds": 8,
   "external_ip_urls": [
-    "https://api.ipify.org",
-    "https://ipv4.icanhazip.com",
-    "https://checkip.amazonaws.com"
+    "https://myip.ipip.net",
+    "http://ip.3322.net",
+    "https://cip.cc",
+    "https://ip9.com.cn/get"
   ],
   "alert_on_private_wan": true,
   "notify_on_start": true,

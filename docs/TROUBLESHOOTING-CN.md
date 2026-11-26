@@ -34,7 +34,7 @@ tail -n 100 /tmp/wanipv4-watcher-bootstrap.log
 
 ## 5. 反复出现 `unknown`
 
-至少两个公网 IPv4 查询服务需要返回一致、有效的公网 IPv4。检查路由器 DNS/HTTPS 连通性，以及 `/tmp/wanipv4-watcher.log` 中各 provider 的错误。程序要求两个服务达成一致，是为了避免只因单一检测站点故障就发送地址不匹配告警。
+固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 查询源，至少两个必须返回相同、有效的公网 IPv4。检查路由器 DNS/HTTPS 连通性（3322 接口使用 HTTP），以及 `/tmp/wanipv4-watcher.log` 中各 provider 的错误。IPIP/CIP 返回说明文本、IP9 返回 JSON，程序会自动解析；旧版配置残留的海外 URL 会被加载时替换。
 
 ## 6. 检测到的 WAN 网卡不对
 

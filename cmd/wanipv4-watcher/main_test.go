@@ -53,6 +53,89 @@ func TestChooseConsensusRequiresTwoProviders(t *testing.T) {
 	}
 }
 
+func TestDomesticExternalIPURLs(t *testing.T) {
+	want := []string{
+		"https://myip.ipip.net",
+		"http://ip.3322.net",
+		"https://cip.cc",
+		"https://ip9.com.cn/get",
+	}
+	if got := domesticExternalIPURLs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("domesticExternalIPURLs() = %#v, want %#v", got, want)
+	}
+	if err := validateDomesticExternalIPURLs(want); err != nil {
+		t.Fatalf("built-in domestic sources rejected: %v", err)
+	}
+	if err := validateDomesticExternalIPURLs([]string{"https://api.ipify.org", "https://cip.cc"}); err == nil {
+		t.Fatal("overseas/custom sources should be rejected")
+	}
+}
+
+func TestParseExternalIPv4Formats(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"IPIP explanatory text", "当前 IP：223.5.5.5 来自于：中国 江苏 苏州", "223.5.5.5"},
+		{"3322 plain text", "223.5.5.5\n", "223.5.5.5"},
+		{"CIP explanatory text", "IP\t: 223.5.5.5\n地址\t: 中国 江苏 苏州", "223.5.5.5"},
+		{"IP9 JSON data.ip", `{"ret":200,"data":{"ip":"223.5.5.5","country":"中国"}}`, "223.5.5.5"},
+		{"IP9 top-level ip compatibility", `{"ip":"223.5.5.5"}`, "223.5.5.5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseExternalIPv4([]byte(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseExternalIPv4() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+	if _, err := parseExternalIPv4([]byte(`{"ret":500,"data":{"ip":"223.5.5.5"}}`)); err == nil {
+		t.Fatal("IP9 error return code should be rejected")
+	}
+	if _, err := parseExternalIPv4([]byte("当前 IP：192.168.1.1")); err == nil {
+		t.Fatal("non-public IPv4 text should be rejected")
+	}
+}
+
+func TestLoadConfigReplacesLegacyOverseasSources(t *testing.T) {
+	contents := `{
+		"wan_interface": "auto",
+		"http_timeout_seconds": 8,
+		"external_ip_urls": [
+			"https://api.ipify.org",
+			"https://ipv4.icanhazip.com",
+			"https://checkip.amazonaws.com"
+		],
+		"smtp": {
+			"host": "smtp.qq.com",
+			"port": 465,
+			"username": "sender@qq.com",
+			"password": "test-auth-code",
+			"from": "sender@qq.com",
+			"to": ["receiver@qq.com"]
+		}
+	}`
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.ExternalIPURLs, domesticExternalIPURLs()) {
+		t.Fatalf("legacy overseas sources were not replaced: %#v", cfg.ExternalIPURLs)
+	}
+	if !reflect.DeepEqual(cfg.CheckTimes, []string{"07:00", "19:00"}) {
+		t.Fatalf("missing schedules should default to 07:00/19:00, got %#v", cfg.CheckTimes)
+	}
+}
+
 func TestDefaultRouteInterfaces(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "route")
 	contents := "Iface Destination Gateway Flags RefCnt Use Metric Mask\n" +

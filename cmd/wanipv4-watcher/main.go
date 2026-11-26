@@ -18,7 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
-	"net/url"
+	"regexp"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,11 +28,24 @@ import (
 	"time"
 )
 
-var version = "0.1.3"
+var version = "0.1.4"
 
 const defaultConfigPath = "/etc/storage/wanipv4-watcher.json"
 const maxResponseBytes = 64 * 1024
 const maxLogBytes = 512 * 1024
+
+// The project intentionally queries only these four selected domestic services.
+// external_ip_urls remains in JSON for backwards compatibility; loadConfig
+// replaces old/custom values with this fixed list so legacy overseas endpoints
+// cannot continue to be called after an upgrade.
+func domesticExternalIPURLs() []string {
+	return []string{
+		"https://myip.ipip.net",
+		"http://ip.3322.net",
+		"https://cip.cc",
+		"https://ip9.com.cn/get",
+	}
+}
 
 type SMTPConfig struct {
 	Host     string   `json:"host"`
@@ -125,6 +138,7 @@ func main() {
 		log.SetOutput(&rotatingWriter{path: cfg.LogFile})
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	log.Printf("using domestic IPv4 sources only: %s", strings.Join(cfg.ExternalIPURLs, ", "))
 
 	if err := validateConfig(cfg); err != nil {
 		log.Printf("configuration error: %v", err)
@@ -189,6 +203,9 @@ func loadConfig(path string) (Config, error) {
 	if len(cfg.CheckTimes) == 0 {
 		cfg.CheckTimes = []string{"07:00", "19:00"}
 	}
+	// Always pin the checker to the four selected domestic sources. This also
+	// migrates persisted Padavan configs that still contain the old overseas URLs.
+	cfg.ExternalIPURLs = domesticExternalIPURLs()
 	return cfg, nil
 }
 
@@ -234,6 +251,27 @@ func nextScheduledCheck(now time.Time, schedules []string) (time.Time, error) {
 	return next, nil
 }
 
+func validateDomesticExternalIPURLs(urls []string) error {
+	expected := domesticExternalIPURLs()
+	if len(urls) != len(expected) {
+		return fmt.Errorf("external_ip_urls is fixed to the four selected domestic services: %s", strings.Join(expected, ", "))
+	}
+	allowed := make(map[string]bool, len(expected))
+	for _, endpoint := range expected {
+		allowed[endpoint] = true
+	}
+	for _, endpoint := range urls {
+		if !allowed[endpoint] {
+			return fmt.Errorf("unsupported IP check endpoint %q; only the four built-in domestic services are allowed", endpoint)
+		}
+		delete(allowed, endpoint)
+	}
+	if len(allowed) != 0 {
+		return errors.New("external_ip_urls must contain all four built-in domestic services")
+	}
+	return nil
+}
+
 func validateConfig(c Config) error {
 	if c.WANInterface == "" {
 		return errors.New("wan_interface must be 'auto' or a Linux interface name")
@@ -244,14 +282,8 @@ func validateConfig(c Config) error {
 	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 {
 		return errors.New("http_timeout_seconds must be between 2 and 60")
 	}
-	if len(c.ExternalIPURLs) < 2 {
-		return errors.New("external_ip_urls must contain at least two independent IPv4 check services")
-	}
-	for _, raw := range c.ExternalIPURLs {
-		u, err := url.Parse(raw)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return fmt.Errorf("invalid external_ip_urls entry %q: use a complete http(s) URL", raw)
-		}
+	if err := validateDomesticExternalIPURLs(c.ExternalIPURLs); err != nil {
+		return err
 	}
 	if c.SMTP.Host == "" || c.SMTP.Port < 1 || c.SMTP.Port > 65535 {
 		return errors.New("smtp.host and a valid smtp.port are required")
@@ -606,9 +638,60 @@ func fetchExternalIPv4(endpoint string, timeout time.Duration) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ip := net.ParseIP(strings.TrimSpace(string(body)))
+	return parseExternalIPv4(body)
+}
+
+// ipv4TextPattern extracts IPv4 tokens from IPIP/CIP explanatory text.
+// IP9 is JSON and is parsed by field rather than by searching arbitrary text.
+var ipv4TextPattern = regexp.MustCompile(`(?:[0-9]{1,3}\.){3}[0-9]{1,3}`)
+
+func parseExternalIPv4(body []byte) (string, error) {
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return "", errors.New("empty response")
+	}
+
+	candidate := ""
+	if ip := net.ParseIP(text); ip != nil && ip.To4() != nil {
+		candidate = ip.To4().String()
+	} else if strings.HasPrefix(text, "{") {
+		var payload struct {
+			Ret  int    `json:"ret"`
+			IP   string `json:"ip"`
+			Data struct {
+				IP string `json:"ip"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return "", fmt.Errorf("invalid JSON response: %w", err)
+		}
+		if payload.Ret != 0 && payload.Ret != 200 {
+			return "", fmt.Errorf("JSON service returned ret=%d", payload.Ret)
+		}
+		candidate = strings.TrimSpace(payload.Data.IP)
+		if candidate == "" {
+			candidate = strings.TrimSpace(payload.IP)
+		}
+		if candidate == "" {
+			return "", errors.New("JSON response does not contain data.ip or ip")
+		}
+	} else {
+		for _, token := range ipv4TextPattern.FindAllString(text, -1) {
+			ip := net.ParseIP(token)
+			if ip == nil || ip.To4() == nil {
+				continue
+			}
+			value := ip.To4().String()
+			if isPublicIPv4(value) {
+				return value, nil
+			}
+		}
+		return "", errors.New("response did not contain a valid public IPv4 address")
+	}
+
+	ip := net.ParseIP(candidate)
 	if ip == nil || ip.To4() == nil {
-		return "", errors.New("response was not a valid IPv4 address")
+		return "", fmt.Errorf("service returned invalid IPv4 %q", candidate)
 	}
 	value := ip.To4().String()
 	if !isPublicIPv4(value) {

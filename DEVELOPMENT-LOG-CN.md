@@ -2,6 +2,14 @@
 
 本文件累计记录 WANIPv4-Watcher 的实现和验证，不按每次改动另建日志文件。
 
+## v0.1.4 — 固定四个国内公网 IP 检测源
+
+- 将检测源固定为 IPIP (`https://myip.ipip.net`)、3322 (`http://ip.3322.net`)、CIP.cc (`https://cip.cc`) 和 IP9 (`https://ip9.com.cn/get`)，移除海外检测源。
+- 旧配置中即使还残留 ipify、icanhazip、AWS 等海外 URL，程序加载时也会强制替换为四个固定来源，避免升级后继续访问海外检测站。
+- 新增对纯 IPv4、IPIP/CIP 说明文本、IP9 JSON `data.ip` 的解析逻辑，并拒绝无效、私网和非公网结果。
+- 新增四个来源、不同返回格式和旧版海外配置迁移的单元测试。
+- 需要 GitHub Actions 的实际测试、Go vet、MIPSLE soft-float / AMD64 构建和 Release 结果确认；真实 K2P 上各站点的可达性仍需设备侧验证。
+
 ## v0.1.0 — 首个可部署版本
 
 - 新建 Go 监控程序，使用标准库实现 WAN 接口 IPv4 读取、默认路由自动识别、外部 IPv4 查询、邮件告警和恢复通知。
