@@ -483,13 +483,17 @@ func chooseConsensus(results map[string]string) string {
 		}
 		counts[value]++
 	}
-	bestIP, bestCount := "", 0
+	bestIP, bestCount, tied := "", 0, false
 	for ip, count := range counts {
 		if count > bestCount {
-			bestIP, bestCount = ip, count
+			bestIP, bestCount, tied = ip, count, false
+		} else if count == bestCount {
+			tied = true
 		}
 	}
-	if bestCount < 2 {
+	// A tie means no unique consensus (for example, two providers report
+	// different public IPs each). Never turn that into a guessed answer.
+	if bestCount < 2 || tied {
 		return ""
 	}
 	return bestIP
@@ -605,6 +609,31 @@ func valueOr(s, fallback string) string {
 	return s
 }
 
+// implicitTLSPlainAuth is only used after sendEmail has already established
+// an implicit-TLS connection (QQ SMTP port 465). net/smtp does not infer that
+// a connection passed to NewClient is TLS-wrapped, so smtp.PlainAuth rejects
+// it unless Client.StartTLS was called. Calling StartTLS here would incorrectly
+// nest TLS over the already encrypted connection; this small Auth implementation
+// sends the same PLAIN credentials over the TLS socket that was just established.
+type implicitTLSPlainAuth struct {
+	username string
+	password string
+}
+
+func (a *implicitTLSPlainAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	if server == nil || server.Name == "" {
+		return "", nil, errors.New("missing SMTP server identity")
+	}
+	return "PLAIN", []byte("\\x00" + a.username + "\\x00" + a.password), nil
+}
+
+func (a *implicitTLSPlainAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if more {
+		return nil, errors.New("unexpected continuation for SMTP PLAIN authentication")
+	}
+	return nil, nil
+}
+
 func sendEmail(cfg SMTPConfig, notice Notice) error {
 	address := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	dialer := &net.Dialer{Timeout: 12 * time.Second}
@@ -623,7 +652,7 @@ func sendEmail(cfg SMTPConfig, notice Notice) error {
 		return fmt.Errorf("SMTP greeting: %w", err)
 	}
 	defer client.Close()
-	if err := client.Auth(smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)); err != nil {
+	if err := client.Auth(&implicitTLSPlainAuth{username: cfg.Username, password: cfg.Password}); err != nil {
 		return fmt.Errorf("SMTP authentication failed (check QQ Mail authorization code): %w", err)
 	}
 	if err := client.Mail(cfg.From); err != nil {
