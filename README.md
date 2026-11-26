@@ -1,6 +1,6 @@
 # WANIPv4-Watcher
 
-**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.1`。
+**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.2`。
 
 它定期读取路由器默认 IPv4 路由对应网卡的地址，并与至少两个独立公网 IPv4 查询服务的结果进行交叉验证。如果 WAN 口地址变成私网、运营商共享地址（CGNAT），或与公网出口地址持续不一致，就发送 QQ 邮件告警；恢复一致后发送恢复通知。
 
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scr
 wget -qO- https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/install-padavan.sh | sh
 ```
 
-安装脚本会保留你现有的 `/etc/storage/started_script.sh` 内容，只在文件末尾追加一个带标记的启动钩子；它还会在配置文件不存在时创建模板，不会覆盖已经存在的邮箱配置。启动钩子会在路由器启动后下载启动脚本，再从 GitHub Release 下载并校验 Go 二进制。
+安装脚本会保留你现有的 `/etc/storage/started_script.sh` 内容，并在每次运行时刷新本工具自己的标记区块，不会覆盖邮箱配置。**Padavan 的关键点是：写入 `/etc/storage` 后还必须执行保存到闪存的操作**；新安装器会自动调用 `/sbin/mtd_storage.sh save`（或固件提供的对应路径），不能保存时会明确报错。启动钩子还会在开机时重试下载，避免网络或 GitHub 尚未就绪导致单次启动失败。
 
 ### 配置 QQ 邮箱
 
@@ -47,6 +47,14 @@ vi /etc/storage/wanipv4-watcher.json
 - `smtp.to`：接收告警的邮箱，可以是 QQ 邮箱或其他邮箱。
 
 默认 SMTP 是 `smtp.qq.com:465`。首次使用前，需要在 QQ 邮箱设置中开启 SMTP 服务并生成授权码。配置文件权限为 `600`，凭证不会上传 GitHub，也不进入程序编译产物。
+
+**编辑完配置后，必须再保存一次到 Padavan 闪存**，否则重启后可能恢复成旧配置：
+
+```sh
+/sbin/mtd_storage.sh save
+```
+
+如果固件没有该命令，请在路由器 Web 管理页进入“系统管理”，选择“保存 `/etc/storage/` 内容到闪存”，然后应用。也可以重新运行上面的安装命令：更新版安装器会保留现有配置、刷新启动钩子，并再次保存整个 `/etc/storage`。这一点正是修复旧安装重启失效的关键。
 
 ### 启动和测试
 

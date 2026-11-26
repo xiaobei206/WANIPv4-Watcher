@@ -13,7 +13,7 @@
 curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/install-padavan.sh | sh
 ```
 
-安装器只在配置文件不存在时创建配置模板，并以标记区块追加启动钩子。重复执行不会重复添加该区块，也不会覆盖已有的配置文件。
+安装器只在配置文件不存在时创建配置模板，保留已有配置，并刷新本工具自己的启动钩子。它会调用 `/sbin/mtd_storage.sh save` 将修改提交到 Padavan 闪存；如果找不到保存命令或保存失败，会明确提示，不会假装安装已持久化。
 
 编辑配置：
 
@@ -22,6 +22,14 @@ vi /etc/storage/wanipv4-watcher.json
 ```
 
 需要设置 `smtp.username`、`smtp.password`、`smtp.from` 和 `smtp.to`。不要把真实授权码贴到 GitHub Issue、公开日志或聊天截图里。
+
+**编辑完配置之后必须保存 `/etc/storage` 到闪存**，否则重启后配置可能回退：
+
+```sh
+/sbin/mtd_storage.sh save
+```
+
+如果固件未提供这个路径，在 Padavan Web 管理页面中进入“系统管理”，执行“保存 `/etc/storage/` 内容到闪存”。
 
 ## 立刻启动
 

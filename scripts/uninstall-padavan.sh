@@ -4,6 +4,8 @@ set -eu
 STORAGE="/etc/storage"
 STARTED="$STORAGE/started_script.sh"
 TEMP="/tmp/started_script.wanipv4-watcher.$$"
+MARKER="# BEGIN WANIPv4-Watcher"
+END_MARKER="# END WANIPv4-Watcher"
 
 say() { printf '%s\n' "[WANIPv4-Watcher uninstall] $*"; }
 
@@ -11,7 +13,11 @@ if [ -f /tmp/wanipv4-watcher-bootstrap.sh ]; then
     /bin/sh /tmp/wanipv4-watcher-bootstrap.sh stop >/dev/null 2>&1 || true
 fi
 
-if [ -f "$STARTED" ] && grep -F '# BEGIN WANIPv4-Watcher' "$STARTED" >/dev/null 2>&1; then
+if [ -f "$STARTED" ] && grep -F "$MARKER" "$STARTED" >/dev/null 2>&1; then
+    if ! grep -F "$END_MARKER" "$STARTED" >/dev/null 2>&1; then
+        say "ERROR: startup marker is incomplete; refusing to rewrite $STARTED."
+        exit 1
+    fi
     awk '
         /# BEGIN WANIPv4-Watcher/ { skip = 1; next }
         /# END WANIPv4-Watcher/   { skip = 0; next }
@@ -21,6 +27,20 @@ if [ -f "$STARTED" ] && grep -F '# BEGIN WANIPv4-Watcher' "$STARTED" >/dev/null 
     rm -f "$TEMP"
     chmod 755 "$STARTED"
     say "removed the WANIPv4-Watcher startup block from $STARTED"
+    if [ -x /sbin/mtd_storage.sh ]; then
+        /sbin/mtd_storage.sh save || {
+            say "ERROR: saving /etc/storage failed; save it from the Padavan web UI before rebooting."
+            exit 1
+        }
+    elif [ -x /usr/sbin/mtd_storage.sh ]; then
+        /usr/sbin/mtd_storage.sh save || {
+            say "ERROR: saving /etc/storage failed; save it from the Padavan web UI before rebooting."
+            exit 1
+        }
+    else
+        say "ERROR: mtd_storage.sh not found; save /etc/storage to flash via the Padavan web UI before rebooting."
+        exit 1
+    fi
 else
     say "startup block was not found; no startup changes were made"
 fi

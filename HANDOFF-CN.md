@@ -1,4 +1,4 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.1.1
+# HANDOFF-CN — WANIPv4-Watcher v0.1.2
 
 ## 项目目标
 

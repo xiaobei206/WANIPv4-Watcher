@@ -27,3 +27,12 @@
 - 修正公网检测源返回结果计数打平时的判断：如两组 IP 各有两个结果，不再随机选择一个，而是保持 `unknown`。
 - 增加“公网检测源打平”单元测试，并再次通过 `go test ./...`、`go vet ./...` 与 MIPSLE soft-float 静态交叉编译。
 - 由于首次 CI 版本已开始创建 `v0.1.0` Release，后续修正发布为 `v0.1.1`，避免将未修正版本作为最新下载资产。
+
+## v0.1.2 — 修复 Padavan 重启后启动失效
+
+- 根因：旧安装器写入 `/etc/storage/started_script.sh` 与邮箱配置后，没有调用 Padavan 的 `mtd_storage.sh save`，改动可能只存在当前 RAM/临时存储层，重启后会丢失。
+- 安装/更新脚本现在在写入启动钩子与初始配置后主动执行 `/sbin/mtd_storage.sh save`（也兼容 `/usr/sbin/mtd_storage.sh`），失败时明确报错并指向 Web UI 保存入口。
+- 每次重跑安装器会保留现有配置和用户脚本其他内容，只刷新本工具自己的标记区块，因此可修复已经安装的旧版本而不重复追加钩子。
+- 开机钩子加入 GitHub/raw 与网络启动的重试；如果配置仍是模板，会直接记录原因，不会无意义重试。
+- 卸载脚本删除启动钩子后同样保存 `/etc/storage`，避免重启后启动项重新出现。
+- 文档明确：用户手工修改 QQ SMTP 配置后，必须再执行 `/sbin/mtd_storage.sh save`，或在 Padavan Web UI 中保存 `/etc/storage` 到闪存。
