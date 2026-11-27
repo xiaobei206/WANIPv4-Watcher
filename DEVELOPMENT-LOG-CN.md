@@ -1,5 +1,14 @@
 # DEVELOPMENT-LOG-CN
 
+## v0.3.0 — LAN Web 管理及梅林 JFFS 永久运行（实现记录）
+
+- Go 程序内置原生 HTML/CSS/JavaScript 管理页，默认 TCP 10005，无网页登录密码，仅绑定 LAN bridge 私有 IPv4；管理 POST 请求要求 Host/Origin 同源。
+- Web 支持配置保存、SMTP 测试、无告警检测测试、正式立即检测、日志查看和 SHA-256 手动更新；SMTP 授权码读取时脱敏，留空保存不覆盖原值。
+- 梅林 Go 二进制固定安装到 /jffs/wanipv4-watcher/wanipv4-watcher，普通重启直接执行；06:40/18:40 cru watchdog 拉起异常退出进程，07:00/19:00 执行 IP 检测。
+- 安装器迁移旧 /tmp 进程；升级先下载与校验，成功后再重启服务，下载失败时不中断当前服务。
+- 自动化单元测试、go vet、Shell 语法检查及 8 架构构建通过；RT-AC86U Web/SMTP/cron 实机验收仍待用户设备确认。
+
+
 本文件累计记录 WANIPv4-Watcher 的实现和验证，不按每次改动另建日志文件。
 
 ## v0.2.1 — 恢复版本化 Release 包名并把设备对照表放回更新说明
