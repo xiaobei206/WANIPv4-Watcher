@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-var version = "0.3.0"
+var version = "0.3.1"
 
 // releaseAssetName is injected by CI for the matching architecture.
 var releaseAssetName = "wanipv4-watcher-linux-arm64"
@@ -145,7 +145,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	log.Printf("using domestic IPv4 sources only: %s", strings.Join(cfg.ExternalIPURLs, ", "))
 
-	if err := validateConfig(cfg); err != nil {
+	if err := validateBaseConfig(cfg); err != nil {
 		log.Printf("configuration error: %v", err)
 		os.Exit(2)
 	}
@@ -160,6 +160,7 @@ func main() {
 		return
 	}
 	if *testEmail {
+		if err := validateSMTPConfig(cfg.SMTP); err != nil { log.Printf("SMTP configuration error: %v", err); os.Exit(2) }
 		n := Notice{
 			Subject: "[WANIPv4-Watcher] QQ 邮件发送测试",
 			Body:    fmt.Sprintf("WANIPv4-Watcher 邮件发送测试成功。\n版本：%s\n时间：%s\n\n如果你收到这封邮件，说明 SMTP 配置可用。\n", version, time.Now().Format(time.RFC3339)),
@@ -173,6 +174,7 @@ func main() {
 	}
 
 	if *once {
+		if err := validateSMTPConfig(cfg.SMTP); err != nil { log.Printf("SMTP configuration error: %v", err); os.Exit(2) }
 		obs := observe(cfg)
 		logObservation(obs)
 		if shouldAlert(cfg, obs) {
@@ -287,51 +289,47 @@ func validateDomesticExternalIPURLs(urls []string) error {
 	return nil
 }
 
-func validateConfig(c Config) error {
-	if c.WANInterface == "" {
-		return errors.New("wan_interface must be 'auto' or a Linux interface name")
-	}
-	if err := validateCheckTimes(c.CheckTimes); err != nil {
-		return err
-	}
-	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 {
-		return errors.New("http_timeout_seconds must be between 2 and 60")
-	}
+func validateBaseConfig(c Config) error {
+	if c.WANInterface == "" { return errors.New("wan_interface must be 'auto' or a Linux interface name") }
+	if err := validateCheckTimes(c.CheckTimes); err != nil { return err }
+	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 { return errors.New("http_timeout_seconds must be between 2 and 60") }
 	if c.WebPort < 1 || c.WebPort > 65535 { return errors.New("web_port must be between 1 and 65535") }
-	if err := validateDomesticExternalIPURLs(c.ExternalIPURLs); err != nil {
-		return err
+	return validateDomesticExternalIPURLs(c.ExternalIPURLs)
+}
+
+func validateSMTPConfig(s SMTPConfig) error {
+	if s.Host == "" || s.Port < 1 || s.Port > 65535 { return errors.New("SMTP 主机和有效端口必须填写") }
+	if s.Username == "" || s.Password == "" || strings.Contains(strings.ToLower(s.Password), "replace") || strings.Contains(strings.ToLower(s.Password), "your_") {
+		return errors.New("SMTP 用户名和授权码必须填写；QQ 邮箱请使用 SMTP 授权码")
 	}
-	if c.SMTP.Host == "" || c.SMTP.Port < 1 || c.SMTP.Port > 65535 {
-		return errors.New("smtp.host and a valid smtp.port are required")
+	if strings.Contains(strings.ToLower(s.Username), "your_") || strings.Contains(strings.ToLower(s.Username), "example.com") { return errors.New("请填写真实发件邮箱") }
+	if s.From == "" || strings.Contains(strings.ToLower(s.From), "your_") || strings.Contains(strings.ToLower(s.From), "example.com") || strings.ContainsAny(s.From, "\r\n") {
+		return errors.New("请填写有效发件人邮箱")
 	}
-	if c.SMTP.Username == "" || c.SMTP.Password == "" || strings.Contains(strings.ToLower(c.SMTP.Password), "replace") || strings.Contains(strings.ToLower(c.SMTP.Password), "your_") {
-		return errors.New("smtp.username and smtp.password must be filled in; use a QQ Mail authorization code, not your QQ login password")
-	}
-	if strings.Contains(strings.ToLower(c.SMTP.Username), "your_") || strings.Contains(strings.ToLower(c.SMTP.Username), "example.com") {
-		return errors.New("replace the example smtp.username with your real mailbox")
-	}
-	if c.SMTP.From == "" {
-		return errors.New("smtp.from is required; normally use the same address as smtp.username")
-	}
-	if strings.Contains(strings.ToLower(c.SMTP.From), "your_") || strings.Contains(strings.ToLower(c.SMTP.From), "example.com") || strings.ContainsAny(c.SMTP.From, "\r\n") {
-		return errors.New("replace the example smtp.from with a real mailbox address")
-	}
-	if len(c.SMTP.To) == 0 {
-		return errors.New("smtp.to must contain at least one recipient email address")
-	}
-	for _, recipient := range c.SMTP.To {
-		lowerRecipient := strings.ToLower(strings.TrimSpace(recipient))
-		if strings.Count(recipient, "@") != 1 || strings.ContainsAny(recipient, "\r\n ,") || strings.Contains(lowerRecipient, "your_") || strings.Contains(lowerRecipient, "example.com") {
-			return fmt.Errorf("smtp.to contains an invalid or unedited recipient %q", recipient)
+	if len(s.To) == 0 { return errors.New("至少填写一个收件邮箱") }
+	for _, recipient := range s.To {
+		lower := strings.ToLower(strings.TrimSpace(recipient))
+		if strings.Count(recipient, "@") != 1 || strings.ContainsAny(recipient, "\r\n ,") || strings.Contains(lower, "your_") || strings.Contains(lower, "example.com") {
+			return fmt.Errorf("收件邮箱无效：%q", recipient)
 		}
 	}
 	return nil
+}
+
+func validateConfig(c Config) error {
+	if err := validateBaseConfig(c); err != nil { return err }
+	return validateSMTPConfig(c.SMTP)
 }
 
 func runMonitor(app *App) {
 	log.Printf("WANIPv4-Watcher %s started", version)
 	for {
 		cfg := app.getConfig()
+		if err := validateSMTPConfig(cfg.SMTP); err != nil {
+			log.Printf("SMTP 尚未配置，定时检测暂停；请在 WebUI 保存邮件配置后自动启用")
+			<-app.reload
+			continue
+		}
 		next, err := nextScheduledCheck(time.Now(), cfg.CheckTimes)
 		if err != nil { log.Printf("cannot determine next check: %v", err); time.Sleep(time.Minute); continue }
 		timer := time.NewTimer(time.Until(next))
