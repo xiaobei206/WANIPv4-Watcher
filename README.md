@@ -1,10 +1,10 @@
 # WANIPv4-Watcher
 
-**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.2.0`。
+**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.2.1`。
 
 程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，通过 QQ 邮件发送告警与恢复通知。
 
-版本说明与完整历史：[v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
+版本说明与完整历史：[v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md) · [v0.2.1](docs/releases/v0.2.1-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
 
 - 默认每天按路由器本地时间 **07:00、19:00** 检查各一次，启动时不会额外检查。
 - 至少两个外部检测源返回相同的有效公网 IPv4 才形成结论；结果不足或冲突时报告 **unknown**，不猜测结论。
@@ -29,7 +29,7 @@
 | **wanipv4-watcher-linux-mips-hardfloat** | 少量匹配大端 MIPS 硬浮点 ABI 的设备 | 需核对 CPU、大小端和用户态 ABI |
 | **wanipv4-watcher-linux-riscv64** | 64 位 RISC-V Linux 设备/开发板 | 编译目标已提供，消费级路由器实机覆盖较少 |
 
-Release 资产名已包含架构信息，文件名下面的说明列补充了少量常见型号/用途。型号示例不是对所有硬件修订版或所有固件的兼容保证。**本项目不编译过旧的 ARMv6、ARMv5，也不编译 32 位 x86（386）。**
+Release 提供传统版本化文件名（`WANIPv4-Watcher-v版本-linux-架构`）和供安装脚本引用的稳定文件名（`wanipv4-watcher-linux-架构`）；架构信息直接写在包名里。型号示例不是对所有硬件修订版或所有固件的兼容保证。**本项目不编译过旧的 ARMv6、ARMv5，也不编译 32 位 x86（386）。**
 
 ### 下载并校验 SHA-256
 

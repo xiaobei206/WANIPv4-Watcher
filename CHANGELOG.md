@@ -2,6 +2,13 @@
 
 本文件按版本记录 WANIPv4-Watcher 的功能变化、修复内容与验证结果。点击任一版本标题可查看独立的完整中文发布说明；GitHub 正式 Release 页面也会同步展示该说明。
 
+## [v0.2.1 — 恢复版本化资产名并增加 Release 设备对照表](docs/releases/v0.2.1-CN.md)
+
+- 恢复版本化二进制包名，同时保留供启动器稳定引用的无版本号名称。
+- 将常见路由器型号与包名的映射放在 Release 更新说明底部的表格里，不再把资产标签当作型号对照表。
+- 多架构构建目标和 Padavan/梅林安装器保持不变。
+
+
 ## [v0.2.0 — 多架构构建与 ASUSWRT-Merlin 支持](docs/releases/v0.2.0-CN.md)
 
 - 从仅突出 K2P/Padavan 扩展为多架构 Linux 路由器/软路由，增加 ARM64、ARMv7、AMD64、MIPSLE/MIPS 两种大小端和浮点 ABI，以及 RISC-V 64-bit 的编译产物。

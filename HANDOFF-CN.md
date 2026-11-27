@@ -1,4 +1,4 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.2.0
+# HANDOFF-CN — WANIPv4-Watcher v0.2.1
 
 ## 项目目标
 
@@ -21,7 +21,7 @@
 - linux/mips：soft-float 和 hard-float。
 - linux/riscv64：64 位 RISC-V Linux。
 
-不构建 ARMv6、ARMv5 或 32 位 x86/386。MIPS 使用者必须确认大小端与浮点 ABI。Release 资产说明列举典型型号/用途，但不替代实机测试。
+不构建 ARMv6、ARMv5 或 32 位 x86/386。MIPS 使用者必须确认大小端与浮点 ABI。Release 更新说明底部包含版本化包名与常见设备/用途的对照表；无版本号的稳定文件名为安装器保留。型号示例不替代实机测试。
 
 ## 文件索引
 
