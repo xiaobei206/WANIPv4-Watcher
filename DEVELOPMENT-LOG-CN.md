@@ -1,5 +1,14 @@
 # DEVELOPMENT-LOG-CN
 
+## v0.3.1 — 全部首次配置统一进入 WebUI
+
+- 梅林安装器移除 WAN、QQ 邮箱、授权码、收件人及定时参数的 Shell 交互。
+- 首次创建默认无凭证配置，先启动 Go WebUI；SMTP 未配置时定时监控等待网页保存。
+- Web 配置接口不回传已保存值；空字段保留原值，保存后前端清空输入、折叠并显示“已保存”。
+- 旧 JFFS 配置和授权码保留；CI 通过后仍需 RT-AC86U 实机验收。
+
+# DEVELOPMENT-LOG-CN
+
 ## v0.3.0 — LAN Web 管理及梅林 JFFS 永久运行（实现记录）
 
 - Go 程序内置原生 HTML/CSS/JavaScript 管理页，默认 TCP 10005，无网页登录密码，仅绑定 LAN bridge 私有 IPv4；管理 POST 请求要求 Host/Origin 同源。
