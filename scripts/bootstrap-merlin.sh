@@ -4,6 +4,7 @@ set -eu
 umask 077
 
 REPO="xiaobei206/WANIPv4-Watcher"
+REPO_RAW="https://raw.githubusercontent.com/$REPO/main"
 CONFIG="/jffs/configs/wanipv4-watcher.json"
 APP_DIR="/jffs/wanipv4-watcher"
 BIN="$APP_DIR/wanipv4-watcher"
