@@ -25,19 +25,48 @@ fi
 fetch() {
     url="$1"
     dest="$2"
+    name="$(basename "$dest")"
+    rm -f "$dest"
+    say "downloading $name from $url"
+    if [ -n "${https_proxy:-}${HTTPS_PROXY:-}${http_proxy:-}${HTTP_PROXY:-}" ]; then
+        say "proxy environment detected (proxy value is not printed)."
+    else
+        say "no HTTP(S) proxy environment detected; trying direct access."
+    fi
+
     if command -v curl >/dev/null 2>&1; then
-        if curl -fsSL --connect-timeout 10 --max-time 120 "$url" -o "$dest"; then
-            return 0
+        if curl -fSL --show-error --connect-timeout 10 --max-time 180 "$url" -o "$dest"; then
+            if [ -s "$dest" ]; then
+                say "curl download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
+                return 0
+            fi
+            say "curl returned success but the downloaded file is empty."
+        else
+            curl_status=$?
+            say "curl failed for $name (exit $curl_status); trying Wget."
         fi
         rm -f "$dest"
+    else
+        say "curl is not installed; using Wget."
     fi
+
     if command -v wget >/dev/null 2>&1; then
-        if wget -q -T 180 -O "$dest" "$url"; then
-            return 0
+        if wget -T 180 -O "$dest" "$url"; then
+            if [ -s "$dest" ]; then
+                say "Wget download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
+                return 0
+            fi
+            say "Wget returned success but the downloaded file is empty."
+        else
+            wget_status=$?
+            say "Wget failed for $name (exit $wget_status)."
         fi
         rm -f "$dest"
+    else
+        say "Wget is not installed."
     fi
-    say "ERROR: download failed (curl and/or wget); verify network access or configured proxy environment."; return 1
+    say "ERROR: no downloader could retrieve $name."
+    return 1
 }
 
 sha256_file() {

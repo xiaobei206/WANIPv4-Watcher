@@ -19,7 +19,7 @@ wget -q -T 120 -O /tmp/install-merlin.sh \
 sh /tmp/install-merlin.sh
 ```
 
-安装器内部先尝试 curl；curl 下载失败（包括固件 curl 不支持代理）会删除不完整文件并回退 Wget。Wget 使用系统标准的 `http_proxy` / `https_proxy` 环境变量（如已设置）。项目不内置任何特定局域网代理地址。通过 SSH 临时导出的代理环境变量只用于当前下载/更新命令；管理脚本启动常驻 Go 监控进程前会清除大小写 HTTP(S)_PROXY、ALL_PROXY、NO_PROXY 变量，确保代理不会进入日常监控进程或被保存到配置。
+安装器内部先尝试 curl；curl 下载失败（包括固件 curl 不支持代理）会删除不完整文件并回退 Wget。Wget 使用系统标准的 `http_proxy` / `https_proxy` 环境变量（如已设置）。项目不内置任何特定局域网代理地址。通过 SSH 临时导出的代理环境变量只用于当前下载/更新命令；管理脚本启动常驻 Go 监控进程前会清除大小写 HTTP(S)_PROXY、ALL_PROXY、NO_PROXY 变量，确保代理不会进入日常监控进程或被保存到配置。 下载器现在会显示正在访问的 URL、curl 的 HTTP/TLS 错误和 Wget 的服务器响应/退出状态，不再用静默模式把错误原因吞掉；不会打印代理地址或认证信息。GitHub 源码脚本下载成功，并不代表 Release 大文件所在的下载/CDN 域名也一定可达。
 
 安装器不再询问 WAN、邮箱、授权码、收件地址或检测时间；这些业务设置全部在 WebUI 完成。首次安装只创建默认空 SMTP 配置并部署服务。已有配置会保留，升级不会覆盖邮箱凭证、设备昵称或备注。
 
