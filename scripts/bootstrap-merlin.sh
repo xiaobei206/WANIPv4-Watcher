@@ -172,7 +172,7 @@ case "${1:-start}" in
         say "registered guards at 06:40 and 18:40 router local time."
         ;;
     menu)
-        printf '\\nWANIPv4-Watcher Merlin\\n1) 安装/修复\\n2) 更新\\n3) 状态\\n4) 卸载\\n5) 日志\\n0) 退出\\n选择: '
+        printf '\nWANIPv4-Watcher Merlin\n1) 安装/修复\n2) 更新\n3) 状态\n4) 卸载\n5) 日志\n0) 退出\n选择: '
         IFS= read -r choice
         case "$choice" in
             1) fetch "$REPO_RAW/scripts/install-merlin.sh" /tmp/install-merlin.sh && sh /tmp/install-merlin.sh ;;
