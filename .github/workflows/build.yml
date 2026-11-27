@@ -43,6 +43,18 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building WANIPv4-Watcher v$VERSION"
 
+      - name: Check Chinese release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          NOTES_FILE="docs/releases/v${VERSION}-CN.md"
+          if [[ ! -s "$NOTES_FILE" ]]; then
+            echo "::error::缺少中文发布说明文件：$NOTES_FILE。请先补全该版本的中文变更、测试结果和已知限制，再发布。"
+            exit 1
+          fi
+          echo "Chinese release notes verified: $NOTES_FILE"
+
       - name: Test
         run: go test ./...
 
