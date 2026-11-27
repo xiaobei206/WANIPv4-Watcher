@@ -74,50 +74,9 @@ if [ -f "$STARTED" ] && grep -F "$MARKER" "$STARTED" >/dev/null 2>&1 &&
 fi
 
 if [ ! -f "$CONFIG" ]; then
-    DETECTED_IF="$(ip -4 route show default 2>/dev/null | awk 'NR == 1 { for (i=1; i<=NF; i++) if ($i == "dev") { print $(i+1); exit } }' || true)"
-    case "$DETECTED_IF" in
-        ""|*[!A-Za-z0-9_.:-]*) DETECTED_IF="auto" ;;
-    esac
-    printf 'WAN interface detected from the first default route: %s\n' "$DETECTED_IF"
-    printf 'WAN interface [Enter accepts %s; type auto for automatic detection]: ' "$DETECTED_IF"
-    IFS= read -r WAN_IF || fail "could not read WAN interface."
-    WAN_IF="${WAN_IF:-$DETECTED_IF}"
-    case "$WAN_IF" in
-        auto) ;;
-        ""|*[!A-Za-z0-9_.:-]*) fail "invalid interface name '$WAN_IF'." ;;
-    esac
-
-    printf 'QQ Mail address used to send alerts: '
-    IFS= read -r SMTP_USER || fail "could not read sender address."
-    valid_email "$SMTP_USER" || fail "invalid sender email address."
-
-    printf 'QQ Mail SMTP authorization code (not the QQ login password; input hidden): '
-    if [ -t 0 ] && [ -t 1 ] && command -v stty >/dev/null 2>&1; then
-        stty -echo
-        trap 'stty echo 2>/dev/null || true' 0
-        if ! IFS= read -r SMTP_AUTH_CODE; then
-            exit 1
-        fi
-        trap - 0
-        stty echo
-        printf '\n'
-    else
-        IFS= read -r SMTP_AUTH_CODE || fail "could not read SMTP authorization code."
-    fi
-    [ -n "$SMTP_AUTH_CODE" ] || fail "SMTP authorization code must not be empty."
-
-    printf 'Email address to receive alerts: '
-    IFS= read -r SMTP_TO || fail "could not read recipient address."
-    valid_email "$SMTP_TO" || fail "invalid recipient email address."
-
-    SMTP_USER_JSON="$(json_escape "$SMTP_USER")"
-    SMTP_AUTH_JSON="$(json_escape "$SMTP_AUTH_CODE")"
-    SMTP_TO_JSON="$(json_escape "$SMTP_TO")"
-    WAN_IF_JSON="$(json_escape "$WAN_IF")"
-    CONFIG_TMP="$CONFIG.tmp.$$"
-    cat > "$CONFIG_TMP" <<CONFIG_JSON
+    cat > "$CONFIG" <<'CONFIG_JSON'
 {
-  "wan_interface": "$WAN_IF_JSON",
+  "wan_interface": "auto",
   "check_times": ["07:00", "19:00"],
   "http_timeout_seconds": 8,
   "external_ip_urls": [
@@ -134,17 +93,15 @@ if [ ! -f "$CONFIG" ]; then
   "smtp": {
     "host": "smtp.qq.com",
     "port": 465,
-    "username": "$SMTP_USER_JSON",
-    "password": "$SMTP_AUTH_JSON",
-    "from": "$SMTP_USER_JSON",
-    "to": ["$SMTP_TO_JSON"]
+    "username": "",
+    "password": "",
+    "from": "",
+    "to": []
   }
 }
 CONFIG_JSON
-    chmod 600 "$CONFIG_TMP"
-    mv -f "$CONFIG_TMP" "$CONFIG"
-    unset SMTP_AUTH_CODE SMTP_AUTH_JSON
-    say "created private config at $CONFIG (permissions 600)."
+    chmod 600 "$CONFIG"
+    say "created first-run config. All WAN, schedule and email settings are entered in the Web UI."
 else
     chmod 600 "$CONFIG"
     say "existing config preserved at $CONFIG."
@@ -202,11 +159,11 @@ say "installed manager at $MANAGER and preserved other services-start content."
 say "starting the permanent JFFS binary; normal boots will not download from GitHub."
 "$MANAGER" stop >/dev/null 2>&1 || true
 if "$MANAGER" start; then
-    say "installation complete. Check mail with: $MANAGER test-email"
+    say "installation complete. Open http://$(nvram get lan_ipaddr 2>/dev/null):10005 and complete configuration in the Web UI."
 else
-    say "the startup hook/config were installed, but the immediate download/start failed."
+    say "the startup hook/config were installed, but the immediate service start failed."
     say "inspect /tmp/wanipv4-watcher-bootstrap.log and rerun: $MANAGER start"
     exit 1
 fi
-say "scheduled checks use router local time at 07:00 and 19:00."
+say "after saving the Web UI settings, the service activates the configured local check times."
 say "config: $CONFIG ; logs: /tmp/wanipv4-watcher.log and /tmp/wanipv4-watcher-bootstrap.log"

@@ -16,11 +16,11 @@
   "smtp": {
     "host": "smtp.qq.com",
     "port": 465,
-    "username": "YOUR_QQ_MAIL@qq.com",
-    "password": "REPLACE_WITH_QQ_MAIL_AUTH_CODE",
-    "from": "YOUR_QQ_MAIL@qq.com",
+    "username": "",
+    "password": "",
+    "from": "",
     "to": [
-      "YOUR_RECIPIENT_MAIL@example.com"
+      ""
     ]
   }
 }

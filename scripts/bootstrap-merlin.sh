@@ -98,10 +98,7 @@ ensure_config() {
         say "ERROR: config missing at $CONFIG; rerun install-merlin.sh."
         return 1
     fi
-    if grep -E 'YOUR_QQ_MAIL|REPLACE_WITH|YOUR_RECIPIENT_MAIL|example.com' "$CONFIG" >/dev/null 2>&1; then
-        say "ERROR: config still contains example placeholders; edit $CONFIG."
-        return 1
-    fi
+    chmod 600 "$CONFIG"
 }
 
 ensure_binary() {
@@ -118,7 +115,7 @@ start_service() {
     ensure_config
     ensure_binary
     if ! "$BIN" -config "$CONFIG" -check-config >> "$BOOTLOG" 2>&1; then
-        say "ERROR: configuration validation failed; see $BOOTLOG and $LOG."
+        say "ERROR: base configuration validation failed; see $BOOTLOG and $LOG."
         return 1
     fi
     nohup "$BIN" -config "$CONFIG" >/dev/null 2>&1 </dev/null &
@@ -126,7 +123,7 @@ start_service() {
     echo "$pid" > "$PIDFILE"
     sleep 1
     if running_pid >/dev/null 2>&1; then
-        say "started pid=$pid; IP checks scheduled for 07:00 and 19:00; Web UI uses LAN TCP port 10005."
+        say "started pid=$pid; complete settings in Web UI at http://$(nvram get lan_ipaddr 2>/dev/null):10005."
         say "logs: $LOG; startup diagnostics: $BOOTLOG"
         return 0
     fi
