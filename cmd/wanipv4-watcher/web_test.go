@@ -59,6 +59,7 @@ func TestConfigSavesDeviceIdentityWithoutReturningSavedValues(t *testing.T) {
 		WANInterface: "auto",
 		CheckTimes: []string{"07:00", "19:00"},
 		HTTPTimeoutSeconds: 8,
+		WebPort: 10005,
 		ExternalIPURLs: domesticExternalIPURLs(),
 		SMTP: SMTPConfig{
 			Host: "smtp.qq.com",
