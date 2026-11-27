@@ -1,6 +1,6 @@
 # DEVELOPMENT-LOG-CN
 
-## v0.3.3 — 程序更新代理设置（实现记录）
+## v0.3.3 — 程序更新代理设置与 Merlin 安装器补充兼容（实现记录）
 
 - 在 WebUI「程序更新」栏目加入直连、HTTP、SOCKS5 选择，代理服务器地址与端口拆分输入；支持 IPv4、IPv6、ASCII 域名和可选认证。
 - 增加独立的代理设置保存、测试 API；测试覆盖 GitHub 最新 Release API 与 checksums.txt 的 Release 资源下载地址，确保不只验证 API 域名。
@@ -8,6 +8,7 @@
 - 仅更新链路使用代理，WAN IPv4 查询仍固定直连，SMTP 发送不变；代理连接失败明确报错，不静默切换出口。
 - 代理地址、端口与模式写入原配置文件（权限 600）；用户名/密码不通过 Web API 回传；支持显式清除认证信息。旧配置缺少 update_proxy 时默认为直连。
 - 增加代理参数校验、HTTP 代理认证、SOCKS5 认证与远端 DNS、直连隔离、配置持久化与 API 凭证脱敏测试；不引入第三方模块，保持 CGO_ENABLED=0 多架构编译目标。
+- 根据 RT-AC86U 实机安装输出发现，交互式 Shell 可执行的 wget 不一定能被子 Shell 脚本解析（可能是别名/函数）。安装器扩展 BusyBox Wget 和常见绝对路径搜索；新增预下载模式复用 /tmp 中 ARM64 二进制、checksums.txt 与 bootstrap-merlin.sh，SHA-256 和脚本语法校验仍强制执行。
 
 
 ## v0.3.2 — 设备身份、逐轮通知、RAM 日志与 RT-AC86U KoolShare 适配

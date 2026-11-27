@@ -34,8 +34,14 @@ fetch() {
         say "no HTTP(S) proxy environment detected; trying direct access."
     fi
 
-    if command -v curl >/dev/null 2>&1; then
-        if curl -fSL --show-error --connect-timeout 10 --max-time 180 "$url" -o "$dest"; then
+    CURL_BIN="$(command -v curl 2>/dev/null || true)"
+    if [ -z "$CURL_BIN" ]; then
+        for candidate in /usr/bin/curl /bin/curl /usr/sbin/curl /opt/bin/curl /koolshare/bin/curl; do
+            if [ -x "$candidate" ]; then CURL_BIN="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$CURL_BIN" ]; then
+        if "$CURL_BIN" -fSL --show-error --connect-timeout 10 --max-time 180 "$url" -o "$dest"; then
             if [ -s "$dest" ]; then
                 say "curl download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
                 return 0
@@ -47,11 +53,17 @@ fetch() {
         fi
         rm -f "$dest"
     else
-        say "curl is not installed; using Wget."
+        say "curl executable not found in PATH or common Merlin paths."
     fi
 
-    if command -v wget >/dev/null 2>&1; then
-        if wget -T 180 -O "$dest" "$url"; then
+    WGET_BIN="$(command -v wget 2>/dev/null || true)"
+    if [ -z "$WGET_BIN" ]; then
+        for candidate in /usr/bin/wget /bin/wget /usr/sbin/wget /opt/bin/wget /koolshare/bin/wget; do
+            if [ -x "$candidate" ]; then WGET_BIN="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$WGET_BIN" ]; then
+        if "$WGET_BIN" -T 180 -O "$dest" "$url"; then
             if [ -s "$dest" ]; then
                 say "Wget download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
                 return 0
@@ -63,12 +75,36 @@ fetch() {
         fi
         rm -f "$dest"
     else
-        say "Wget is not installed."
+        say "standalone Wget executable not found."
     fi
-    say "ERROR: no downloader could retrieve $name."
+
+    BUSYBOX_BIN="$(command -v busybox 2>/dev/null || true)"
+    if [ -z "$BUSYBOX_BIN" ]; then
+        for candidate in /bin/busybox /usr/bin/busybox /sbin/busybox /usr/sbin/busybox; do
+            if [ -x "$candidate" ]; then BUSYBOX_BIN="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$BUSYBOX_BIN" ] && "$BUSYBOX_BIN" wget --help >/dev/null 2>&1; then
+        say "trying BusyBox Wget via $BUSYBOX_BIN."
+        if "$BUSYBOX_BIN" wget -T 180 -O "$dest" "$url"; then
+            if [ -s "$dest" ]; then
+                say "BusyBox Wget download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
+                return 0
+            fi
+            say "BusyBox Wget returned success but the downloaded file is empty."
+        else
+            busybox_wget_status=$?
+            say "BusyBox Wget failed for $name (exit $busybox_wget_status)."
+        fi
+        rm -f "$dest"
+    elif [ -n "$BUSYBOX_BIN" ]; then
+        say "BusyBox is present at $BUSYBOX_BIN but its Wget applet is unavailable."
+    else
+        say "BusyBox executable not found in common Merlin paths."
+    fi
+    say "ERROR: no standalone or BusyBox downloader could retrieve $name."
     return 1
 }
-
 sha256_file() {
     target="$1"
     sha_bin="$(command -v sha256sum 2>/dev/null || true)"

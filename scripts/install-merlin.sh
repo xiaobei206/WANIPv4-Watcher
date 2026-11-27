@@ -28,6 +28,14 @@ fetch() {
     url="$1"
     dest="$2"
     name="$(basename "$dest")"
+
+    # The interactive shell may provide wget as an alias or function; child
+    # /bin/sh cannot inherit those helpers. Preloaded assets remain fully verified.
+    if [ "${WANIPv4_WATCHER_PRELOADED:-0}" = "1" ] && [ -s "$dest" ]; then
+        say "using pre-downloaded $name ($(wc -c < "$dest" | tr -d ' ') bytes); normal validation will still run."
+        return 0
+    fi
+
     rm -f "$dest"
     say "downloading $name from $url"
     if [ -n "${https_proxy:-}${HTTPS_PROXY:-}${http_proxy:-}${HTTP_PROXY:-}" ]; then
@@ -36,8 +44,14 @@ fetch() {
         say "no HTTP(S) proxy environment detected; trying direct access."
     fi
 
-    if command -v curl >/dev/null 2>&1; then
-        if curl -fSL --show-error --connect-timeout 10 --max-time 180 "$url" -o "$dest"; then
+    CURL_BIN="$(command -v curl 2>/dev/null || true)"
+    if [ -z "$CURL_BIN" ]; then
+        for candidate in /usr/bin/curl /bin/curl /usr/sbin/curl /opt/bin/curl /koolshare/bin/curl; do
+            if [ -x "$candidate" ]; then CURL_BIN="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$CURL_BIN" ]; then
+        if "$CURL_BIN" -fSL --show-error --connect-timeout 10 --max-time 180 "$url" -o "$dest"; then
             if [ -s "$dest" ]; then
                 say "curl download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
                 return 0
@@ -49,11 +63,17 @@ fetch() {
         fi
         rm -f "$dest"
     else
-        say "curl is not installed; using Wget."
+        say "curl executable not found in PATH or common Merlin paths."
     fi
 
-    if command -v wget >/dev/null 2>&1; then
-        if wget -T 180 -O "$dest" "$url"; then
+    WGET_BIN="$(command -v wget 2>/dev/null || true)"
+    if [ -z "$WGET_BIN" ]; then
+        for candidate in /usr/bin/wget /bin/wget /usr/sbin/wget /opt/bin/wget /koolshare/bin/wget; do
+            if [ -x "$candidate" ]; then WGET_BIN="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$WGET_BIN" ]; then
+        if "$WGET_BIN" -T 180 -O "$dest" "$url"; then
             if [ -s "$dest" ]; then
                 say "Wget download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
                 return 0
@@ -65,11 +85,37 @@ fetch() {
         fi
         rm -f "$dest"
     else
-        say "Wget is not installed."
+        say "standalone Wget executable not found."
+    fi
+
+    BUSYBOX_BIN="$(command -v busybox 2>/dev/null || true)"
+    if [ -z "$BUSYBOX_BIN" ]; then
+        for candidate in /bin/busybox /usr/bin/busybox /sbin/busybox /usr/sbin/busybox; do
+            if [ -x "$candidate" ]; then BUSYBOX_BIN="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$BUSYBOX_BIN" ]; then
+        if "$BUSYBOX_BIN" wget --help >/dev/null 2>&1; then
+            say "trying BusyBox Wget via $BUSYBOX_BIN."
+            if "$BUSYBOX_BIN" wget -T 180 -O "$dest" "$url"; then
+                if [ -s "$dest" ]; then
+                    say "BusyBox Wget download succeeded: $name ($(wc -c < "$dest" | tr -d ' ') bytes)."
+                    return 0
+                fi
+                say "BusyBox Wget returned success but the downloaded file is empty."
+            else
+                busybox_wget_status=$?
+                say "BusyBox Wget failed for $name (exit $busybox_wget_status)."
+            fi
+            rm -f "$dest"
+        else
+            say "BusyBox is present at $BUSYBOX_BIN but its Wget applet is unavailable."
+        fi
+    else
+        say "BusyBox executable not found in common Merlin paths."
     fi
     return 1
 }
-
 CURRENT_UID="$(awk '/^Uid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
 if [ "$CURRENT_UID" != "0" ]; then
     if command -v id >/dev/null 2>&1; then CURRENT_UID="$(id -u 2>/dev/null || true)"; fi

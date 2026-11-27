@@ -58,6 +58,11 @@
 
 GitHub Actions 负责自动单元测试、Go vet、Shell 语法检查和架构交叉编译。成功的 CI 只证明构建流程通过，不表示所有型号都已实机验证。RT-AC86U 386.9_0 KoolShare 已实测安装并确认基础 v0.3.1 进程/WebUI 可启动；v0.3.2 的升级脚本、逐轮邮件、优先级标记及 RAM 日志仍需在设备侧验收。
 
+## v0.3.3 程序更新代理与梅林安装器兼容
+
+- 安装器可搜索 BusyBox Wget 和常见绝对路径；对交互 Shell 的 wget 别名/函数不可被子 Shell 调用的情况，支持使用预下载的 ARM64 二进制、checksums.txt、bootstrap-merlin.sh 文件继续安装。
+- 预下载模式需要设置 `WANIPv4_WATCHER_PRELOADED=1`，仍强制 SHA-256 与 Shell 语法校验。
+
 ## v0.3.3 程序更新代理
 
 - 更新栏目选择直连、HTTP 或 SOCKS5；主机地址与端口分开，认证为可选项。

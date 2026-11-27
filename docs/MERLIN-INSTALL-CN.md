@@ -19,7 +19,21 @@ wget -q -T 120 -O /tmp/install-merlin.sh \
 sh /tmp/install-merlin.sh
 ```
 
-安装器内部先尝试 curl；curl 下载失败（包括固件 curl 不支持代理）会删除不完整文件并回退 Wget。Wget 使用系统标准的 `http_proxy` / `https_proxy` 环境变量（如已设置）。项目不内置任何特定局域网代理地址。通过 SSH 临时导出的代理环境变量只用于当前下载/更新命令；管理脚本启动常驻 Go 监控进程前会清除大小写 HTTP(S)_PROXY、ALL_PROXY、NO_PROXY 变量，确保代理不会进入日常监控进程或被保存到配置。 下载器现在会显示正在访问的 URL、curl 的 HTTP/TLS 错误和 Wget 的服务器响应/退出状态，不再用静默模式把错误原因吞掉；不会打印代理地址或认证信息。GitHub 源码脚本下载成功，并不代表 Release 大文件所在的下载/CDN 域名也一定可达。
+安装器依次尝试 PATH / 常见固件目录中的 curl、独立 Wget，以及 BusyBox 自带的 Wget applet。注意：某些路由器 SSH 交互 Shell 里的 `wget` 可能只是别名或函数；它能在命令行使用，不代表非交互式 `sh` 脚本也能调用。若安装日志显示 curl、Wget 和 BusyBox Wget 都不可用，可以在当前 SSH 交互窗口先把三个文件下载到安装器指定的 RAM 路径，再用预下载模式运行安装器：
+
+```sh
+wget -q -T 180 -O /tmp/wanipv4-watcher-arm64.new \
+  https://github.com/xiaobei206/WANIPv4-Watcher/releases/download/v0.3.3/wanipv4-watcher-linux-arm64 &&
+wget -q -T 180 -O /tmp/wanipv4-watcher-checksums.txt \
+  https://github.com/xiaobei206/WANIPv4-Watcher/releases/download/v0.3.3/checksums.txt &&
+wget -q -T 180 -O /tmp/wanipv4-watcher-merlin.new \
+  https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/bootstrap-merlin.sh &&
+WANIPv4_WATCHER_PRELOADED=1 sh /tmp/install-merlin.sh
+```
+
+预下载模式只复用这三个已下载文件，不会跳过检查：安装器仍会读取 Release 的 `checksums.txt`，对 ARM64 二进制进行 SHA-256 校验，通过后才替换 JFFS 程序；管理脚本仍会先执行 `sh -n` 语法检查。预下载文件放在 `/tmp`，安装完成会清理二进制和校验文件。
+
+Wget / BusyBox Wget 使用系统标准的 `http_proxy` / `https_proxy` 环境变量（如已设置）。项目不内置任何特定局域网代理地址。通过 SSH 临时导出的代理环境变量只用于当前下载/更新命令；管理脚本启动常驻 Go 监控进程前会清除大小写 HTTP(S)_PROXY、ALL_PROXY、NO_PROXY 变量，确保代理不会进入日常监控进程或被保存到配置。下载器会显示正在访问的 URL、curl 的 HTTP/TLS 错误、Wget / BusyBox Wget 的连接信息和退出状态；不会打印代理认证信息。GitHub 源码脚本下载成功，并不代表 Release 大文件所在的下载/CDN 域名也一定可达。
 
 安装器不再询问 WAN、邮箱、授权码、收件地址或检测时间；这些业务设置全部在 WebUI 完成。首次安装只创建默认空 SMTP 配置并部署服务。已有配置会保留，升级不会覆盖邮箱凭证、设备昵称或备注。
 
