@@ -4,6 +4,7 @@ set -eu
 
 SCRIPTS="/jffs/scripts"
 CONFIG="/jffs/configs/wanipv4-watcher.json"
+APP_DIR="/jffs/wanipv4-watcher"
 MANAGER="$SCRIPTS/wanipv4-watcher"
 STARTED="$SCRIPTS/services-start"
 TEMP="/tmp/services-start.wanipv4-watcher-uninstall.$$"
@@ -15,6 +16,11 @@ say() { printf '%s\n' "[WANIPv4-Watcher Merlin uninstall] $*"; }
 if [ "$(id -u)" -ne 0 ]; then
     say "ERROR: please run as administrator/root over SSH."
     exit 1
+fi
+
+if command -v cru >/dev/null 2>&1; then
+    cru d wanipv4_watcher_guard_0640 2>/dev/null || true
+    cru d wanipv4_watcher_guard_1840 2>/dev/null || true
 fi
 
 if [ -f "$STARTED" ] && grep -F "$MARKER" "$STARTED" >/dev/null 2>&1 &&
@@ -45,5 +51,6 @@ rm -f "$MANAGER" /tmp/wanipv4-watcher /tmp/wanipv4-watcher.new \
     /tmp/wanipv4-watcher.log /tmp/wanipv4-watcher.log.1 \
     /tmp/wanipv4-watcher-bootstrap.log /tmp/wanipv4-watcher-merlin.new \
     /tmp/services-start.wanipv4-watcher.*
-say "runtime files removed. Configuration/credentials were kept at $CONFIG."
+rm -rf "$APP_DIR"
+say "JFFS program removed and watchdog tasks cleared. Configuration/credentials were kept at $CONFIG."
 say "to delete them too, review the file and then run: rm -f $CONFIG"

@@ -5,9 +5,9 @@ umask 077
 
 REPO="xiaobei206/WANIPv4-Watcher"
 CONFIG="/jffs/configs/wanipv4-watcher.json"
-BIN="/tmp/wanipv4-watcher"
-NEW_BIN="/tmp/wanipv4-watcher.new"
-CHECKSUMS="/tmp/wanipv4-watcher-checksums.txt"
+APP_DIR="/jffs/wanipv4-watcher"
+BIN="$APP_DIR/wanipv4-watcher"
+MANAGER="/jffs/scripts/wanipv4-watcher"
 PIDFILE="/tmp/wanipv4-watcher.pid"
 LOG="/tmp/wanipv4-watcher.log"
 BOOTLOG="/tmp/wanipv4-watcher-bootstrap.log"
@@ -46,7 +46,7 @@ is_our_process() {
     [ -r "/proc/$pid/cmdline" ] || return 1
     cmdline="$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
     case "$cmdline" in
-        *"/tmp/wanipv4-watcher"*) return 0 ;;
+        *"/jffs/wanipv4-watcher/wanipv4-watcher"*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -88,35 +88,7 @@ stop_process() {
 }
 
 download_binary() {
-    attempt=1
-    while [ "$attempt" -le 6 ]; do
-        rm -f "$NEW_BIN" "$CHECKSUMS"
-        if fetch "$BASE_URL/$ASSET" "$NEW_BIN" && [ -s "$NEW_BIN" ] &&
-           fetch "$BASE_URL/checksums.txt" "$CHECKSUMS" && [ -s "$CHECKSUMS" ]; then
-            expected="$(awk -v asset="$ASSET" '$2 == asset {print $1; exit}' "$CHECKSUMS")"
-            if [ -z "$expected" ]; then
-                say "ERROR: checksums.txt does not contain $ASSET."
-                rm -f "$NEW_BIN" "$CHECKSUMS"
-                return 1
-            fi
-            actual="$(sha256_file "$NEW_BIN")" || return 1
-            if [ "$expected" != "$actual" ]; then
-                say "ERROR: SHA-256 mismatch; refusing to execute the download."
-                rm -f "$NEW_BIN" "$CHECKSUMS"
-                return 1
-            fi
-            chmod 700 "$NEW_BIN"
-            mv -f "$NEW_BIN" "$BIN"
-            rm -f "$CHECKSUMS"
-            say "downloaded and SHA-256 verified $ASSET"
-            return 0
-        fi
-        say "download attempt $attempt/6 failed; retrying in 10 seconds."
-        rm -f "$NEW_BIN" "$CHECKSUMS"
-        sleep 10
-        attempt=$((attempt + 1))
-    done
-    say "ERROR: could not download the verified ARM64 release asset."
+    say "ERROR: permanent JFFS binary is missing; rerun install-merlin.sh to repair."
     return 1
 }
 
@@ -153,7 +125,7 @@ start_service() {
     echo "$pid" > "$PIDFILE"
     sleep 1
     if running_pid >/dev/null 2>&1; then
-        say "started pid=$pid; checks scheduled for 07:00 and 19:00 router local time."
+        say "started pid=$pid; IP checks scheduled for 07:00 and 19:00; Web UI uses LAN TCP port 10005."
         say "logs: $LOG; startup diagnostics: $BOOTLOG"
         return 0
     fi
@@ -175,8 +147,38 @@ case "${1:-start}" in
         ;;
     update)
         stop_process
-        rm -f "$BIN"
+        ensure_config
+        ensure_binary
+        "$BIN" -config "$CONFIG" -update
         start_service
+        ;;
+    guard)
+        if pid="$(running_pid)"; then
+            say "guard: service running, pid=$pid"
+        else
+            say "guard: service not running; restarting"
+            start_service
+        fi
+        ;;
+    install-cron)
+        command -v cru >/dev/null 2>&1 || { say "ERROR: cru command not found; watchdog not registered."; exit 1; }
+        cru d wanipv4_watcher_guard_0640 2>/dev/null || true
+        cru d wanipv4_watcher_guard_1840 2>/dev/null || true
+        cru a wanipv4_watcher_guard_0640 "40 6 * * * $MANAGER guard"
+        cru a wanipv4_watcher_guard_1840 "40 18 * * * $MANAGER guard"
+        say "registered guards at 06:40 and 18:40 router local time."
+        ;;
+    menu)
+        printf '\\nWANIPv4-Watcher Merlin\\n1) 安装/修复\\n2) 更新\\n3) 状态\\n4) 卸载\\n5) 日志\\n0) 退出\\n选择: '
+        IFS= read -r choice
+        case "$choice" in
+            1) if command -v curl >/dev/null 2>&1; then curl -fsSL "$REPO_RAW/scripts/install-merlin.sh" -o /tmp/install-merlin.sh && sh /tmp/install-merlin.sh; else say "curl is required"; fi ;;
+            2) "$MANAGER" update ;;
+            3) "$MANAGER" status || true ;;
+            4) if command -v curl >/dev/null 2>&1; then curl -fsSL "$REPO_RAW/scripts/uninstall-merlin.sh" -o /tmp/uninstall-merlin.sh && sh /tmp/uninstall-merlin.sh; fi ;;
+            5) "$MANAGER" logs ;;
+            *) say "exit" ;;
+        esac
         ;;
     status)
         if pid="$(running_pid)"; then
@@ -206,7 +208,7 @@ case "${1:-start}" in
         tail -n 100 "$BOOTLOG" 2>/dev/null || true
         ;;
     *)
-        say "usage: $0 {start|stop|restart|update|status|check-config|once|test-email|logs}"
+        say "usage: $0 {start|stop|restart|update|status|guard|install-cron|menu|check-config|once|test-email|logs}"
         exit 2
         ;;
 esac

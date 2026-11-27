@@ -10,6 +10,13 @@ CONFIG="$CONFIG_DIR/wanipv4-watcher.json"
 MANAGER="$SCRIPTS/wanipv4-watcher"
 STARTED="$SCRIPTS/services-start"
 MANAGER_TMP="/tmp/wanipv4-watcher-merlin.new"
+APP_DIR="/jffs/wanipv4-watcher"
+BIN="$APP_DIR/wanipv4-watcher"
+BIN_DOWNLOAD="/tmp/wanipv4-watcher-arm64.new"
+BIN_TMP="$APP_DIR/wanipv4-watcher.new"
+CHECKSUMS_TMP="/tmp/wanipv4-watcher-checksums.txt"
+ASSET="wanipv4-watcher-linux-arm64"
+RELEASE_BASE="https://github.com/xiaobei206/WANIPv4-Watcher/releases/latest/download"
 START_TMP="/tmp/services-start.wanipv4-watcher.$$"
 MARKER="# BEGIN WANIPv4-Watcher-Merlin"
 END_MARKER="# END WANIPv4-Watcher-Merlin"
@@ -59,7 +66,7 @@ if ! command -v sha256sum >/dev/null 2>&1 && ! command -v openssl >/dev/null 2>&
     fail "sha256sum or openssl is required to verify the release binary."
 fi
 
-mkdir -p "$SCRIPTS" "$CONFIG_DIR"
+mkdir -p "$SCRIPTS" "$CONFIG_DIR" "$APP_DIR"
 
 if [ -f "$STARTED" ] && grep -F "$MARKER" "$STARTED" >/dev/null 2>&1 &&
    ! grep -F "$END_MARKER" "$STARTED" >/dev/null 2>&1; then
@@ -123,6 +130,7 @@ if [ ! -f "$CONFIG" ]; then
   "notify_on_start": true,
   "notify_on_recovery": true,
   "log_file": "/tmp/wanipv4-watcher.log",
+  "web_port": 10005,
   "smtp": {
     "host": "smtp.qq.com",
     "port": 465,
@@ -141,6 +149,24 @@ else
     chmod 600 "$CONFIG"
     say "existing config preserved at $CONFIG."
 fi
+
+# Download once, verify, then store the executable permanently in JFFS.
+fetch "$RELEASE_BASE/$ASSET" "$BIN_DOWNLOAD" || fail "could not download the ARM64 Release binary."
+[ -s "$BIN_DOWNLOAD" ] || fail "downloaded ARM64 binary is empty."
+fetch "$RELEASE_BASE/checksums.txt" "$CHECKSUMS_TMP" || fail "could not download checksums.txt."
+EXPECTED="$(awk -v asset="$ASSET" '$2 == asset {print $1; exit}' "$CHECKSUMS_TMP")"
+[ -n "$EXPECTED" ] || fail "checksums.txt does not contain $ASSET."
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL="$(sha256sum "$BIN_DOWNLOAD" | awk '{print $1}')"
+else
+    ACTUAL="$(openssl dgst -sha256 "$BIN_DOWNLOAD" | awk '{print $NF}')"
+fi
+[ "$EXPECTED" = "$ACTUAL" ] || fail "SHA-256 mismatch; existing JFFS binary was not replaced."
+cp "$BIN_DOWNLOAD" "$BIN_TMP"
+chmod 700 "$BIN_TMP"
+mv -f "$BIN_TMP" "$BIN"
+rm -f "$BIN_DOWNLOAD" "$CHECKSUMS_TMP"
+say "verified binary installed permanently at $BIN."
 
 fetch "$REPO_RAW/scripts/bootstrap-merlin.sh" "$MANAGER_TMP" || fail "could not download bootstrap-merlin.sh."
 sh -n "$MANAGER_TMP" || fail "downloaded bootstrap-merlin.sh did not pass shell syntax validation."
@@ -162,6 +188,7 @@ cat >> "$START_TMP" <<'MERLIN_BOOT'
 # BEGIN WANIPv4-Watcher-Merlin
 (
     sleep 5
+    /jffs/scripts/wanipv4-watcher install-cron || true
     /jffs/scripts/wanipv4-watcher start
 ) >/tmp/wanipv4-watcher-bootstrap.log 2>&1 &
 # END WANIPv4-Watcher-Merlin
@@ -172,7 +199,7 @@ mv -f "$START_TMP" "$STARTED"
 chmod 755 "$STARTED"
 
 say "installed manager at $MANAGER and preserved other services-start content."
-say "starting the monitor now; it downloads the matching ARM64 release and verifies SHA-256."
+say "starting the permanent JFFS binary; normal boots will not download from GitHub."
 if "$MANAGER" start; then
     say "installation complete. Check mail with: $MANAGER test-email"
 else
