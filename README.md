@@ -1,6 +1,6 @@
 # WANIPv4-Watcher
 
-**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.2.1`。
+**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前正式版本：`0.2.2`。
 
 程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，通过 QQ 邮件发送告警与恢复通知。
 
@@ -29,7 +29,7 @@
 | **wanipv4-watcher-linux-mips-hardfloat** | 少量匹配大端 MIPS 硬浮点 ABI 的设备 | 需核对 CPU、大小端和用户态 ABI |
 | **wanipv4-watcher-linux-riscv64** | 64 位 RISC-V Linux 设备/开发板 | 编译目标已提供，消费级路由器实机覆盖较少 |
 
-Release 提供传统版本化文件名（`WANIPv4-Watcher-v版本-linux-架构`）和供安装脚本引用的稳定文件名（`wanipv4-watcher-linux-架构`）；架构信息直接写在包名里。型号示例不是对所有硬件修订版或所有固件的兼容保证。**本项目不编译过旧的 ARMv6、ARMv5，也不编译 32 位 x86（386）。**
+Release 中每种架构只提供一个固定文件名（`wanipv4-watcher-linux-架构`）；版本号只体现在 Release 标题、说明和对应源码/构建报告中。安装脚本始终通过 `/releases/latest/download/` 下载固定资产名，不需要随版本改动。型号示例不是对所有硬件修订版或所有固件的兼容保证。**本项目不编译过旧的 ARMv6、ARMv5，也不编译 32 位 x86（386）。**
 
 ### 下载并校验 SHA-256
 

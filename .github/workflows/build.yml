@@ -175,19 +175,7 @@ jobs:
 
           构建与自动测试成功不等于所有设备均已实机验证。选择 MIPS 浮点 ABI 时必须与固件用户态匹配；梅林安装器针对 ARM64/AArch64 目标。具体型号支持情况请查看 Release 资产说明和中文文档。
           REPORT
-          # Versioned filenames are for people; unversioned names remain stable for installer URLs.
-          for asset in \
-            wanipv4-watcher-linux-arm64 \
-            wanipv4-watcher-linux-armv7 \
-            wanipv4-watcher-linux-amd64 \
-            wanipv4-watcher-linux-mipsle-softfloat \
-            wanipv4-watcher-linux-mipsle-hardfloat \
-            wanipv4-watcher-linux-mips-softfloat \
-            wanipv4-watcher-linux-mips-hardfloat \
-            wanipv4-watcher-linux-riscv64; do
-            versioned="WANIPv4-Watcher-v$VERSION-${asset#wanipv4-watcher-}"
-            cp "dist/$asset" "dist/$versioned"
-          done
+          # Binary filenames stay stable across releases; the Release tag carries the version.
           cd dist
           sha256sum \
             wanipv4-watcher-linux-arm64 \
@@ -198,19 +186,10 @@ jobs:
             wanipv4-watcher-linux-mips-softfloat \
             wanipv4-watcher-linux-mips-hardfloat \
             wanipv4-watcher-linux-riscv64 \
-            "WANIPv4-Watcher-v$VERSION-linux-arm64" \
-            "WANIPv4-Watcher-v$VERSION-linux-armv7" \
-            "WANIPv4-Watcher-v$VERSION-linux-amd64" \
-            "WANIPv4-Watcher-v$VERSION-linux-mipsle-softfloat" \
-            "WANIPv4-Watcher-v$VERSION-linux-mipsle-hardfloat" \
-            "WANIPv4-Watcher-v$VERSION-linux-mips-softfloat" \
-            "WANIPv4-Watcher-v$VERSION-linux-mips-hardfloat" \
-            "WANIPv4-Watcher-v$VERSION-linux-riscv64" \
             "WANIPv4-Watcher-v$VERSION-source.tar.gz" \
             "WANIPv4-Watcher-BUILD-REPORT-CN-v$VERSION.md" \
             > checksums.txt
           cat checksums.txt
-          cp checksums.txt "WANIPv4-Watcher-v$VERSION-checksums.txt"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -320,14 +299,6 @@ jobs:
           preserve_order: true
           body_path: docs/releases/v${{ steps.meta.outputs.version }}-CN.md
           files: |
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-arm64
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-armv7
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-amd64
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mipsle-softfloat
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mipsle-hardfloat
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mips-softfloat
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mips-hardfloat
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-riscv64
             dist/wanipv4-watcher-linux-arm64
             dist/wanipv4-watcher-linux-armv7
             dist/wanipv4-watcher-linux-amd64
@@ -338,5 +309,32 @@ jobs:
             dist/wanipv4-watcher-linux-riscv64
             dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-source.tar.gz
             dist/WANIPv4-Watcher-BUILD-REPORT-CN-v${{ steps.meta.outputs.version }}.md
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-checksums.txt
             dist/checksums.txt
+      - name: Keep historical release notes and remove old uploaded assets
+        if: steps.publish.outputs.do_publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep the v0.2.0 and v0.2.1 Release pages and their descriptions,
+          # but remove all manually uploaded assets from those two superseded releases.
+          for tag in v0.2.0 v0.2.1; do
+            release_id="$(gh api "repos/$REPOSITORY/releases/tags/$tag" --jq '.id' 2>/dev/null || true)"
+            if [[ -z "$release_id" ]]; then
+              echo "No GitHub Release found for $tag; skipping."
+              continue
+            fi
+            asset_ids="$(gh api "repos/$REPOSITORY/releases/$release_id" --jq '.assets[]?.id' 2>/dev/null || true)"
+            if [[ -z "$asset_ids" ]]; then
+              echo "$tag has no uploaded assets; its release description is untouched."
+              continue
+            fi
+            while IFS= read -r asset_id; do
+              [[ -n "$asset_id" ]] || continue
+              gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id"
+              echo "Deleted uploaded asset $asset_id from $tag"
+            done <<< "$asset_ids"
+            echo "Preserved $tag title and release notes."
+          done
