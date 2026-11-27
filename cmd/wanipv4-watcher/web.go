@@ -109,14 +109,18 @@ func(a *App)config(w http.ResponseWriter,r *http.Request){
 	if e:=validateConfig(c);e!=nil{writeError(w,400,e.Error());return};if e:=saveWebConfig(a.configPath,c);e!=nil{writeError(w,500,e.Error());return};a.setConfig(c);writeJSON(w,map[string]any{"ok":true,"message":"配置已保存"})
 }
 func(a *App)testEmail(w http.ResponseWriter,r *http.Request){
-	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }c:=a.getConfig();n:=Notice{Subject:"[WANIPv4-Watcher] 邮件测试",Body:fmt.Sprintf("WANIPv4-Watcher 邮件测试成功。\\n版本：%s\\n时间：%s\\n",version,time.Now().Format(time.RFC3339))};if e:=sendEmail(c.SMTP,n);e!=nil{writeError(w,502,e.Error());return};writeJSON(w,map[string]any{"ok":true,"message":"测试邮件已发送"})}
+	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+	c:=a.getConfig();n:=Notice{Subject:"[WANIPv4-Watcher] 邮件测试",Body:fmt.Sprintf("WANIPv4-Watcher 邮件测试成功。\\n版本：%s\\n时间：%s\\n",version,time.Now().Format(time.RFC3339))};if e:=sendEmail(c.SMTP,n);e!=nil{writeError(w,502,e.Error());return};writeJSON(w,map[string]any{"ok":true,"message":"测试邮件已发送"})}
 func(a *App)testCheck(w http.ResponseWriter,r *http.Request){
-	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }o:=a.performCheck(false);writeJSON(w,map[string]any{"ok":o.Status!="unknown","observation":o})}
+	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+	o:=a.performCheck(false);writeJSON(w,map[string]any{"ok":o.Status!="unknown","observation":o})}
 func(a *App)checkNow(w http.ResponseWriter,r *http.Request){
-	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }o:=a.performCheck(true);writeJSON(w,map[string]any{"ok":o.Status!="unknown","observation":o})}
+	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+	o:=a.performCheck(true);writeJSON(w,map[string]any{"ok":o.Status!="unknown","observation":o})}
 func(a *App)logs(w http.ResponseWriter,r *http.Request){c:=a.getConfig();b,e:=os.ReadFile(c.LogFile);if e!=nil{writeJSON(w,map[string]string{"text":"暂无日志"});return};if len(b)>24<<10{b=b[len(b)-(24<<10):]};writeJSON(w,map[string]string{"text":string(b)})}
 func(a *App)update(w http.ResponseWriter,r *http.Request){
-	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }tag,changed,e:=performSelfUpdate();if e!=nil{writeError(w,502,e.Error());return};if !changed{writeJSON(w,map[string]any{"ok":true,"updated":false,"message":"当前已是最新版本："+tag});return};writeJSON(w,map[string]any{"ok":true,"updated":true,"message":"已更新到 "+tag+"，正在重启"});go func(){time.Sleep(1500*time.Millisecond);exe,e:=os.Executable();if e!=nil{log.Printf("restart after update: %v",e);return};if e=syscall.Exec(exe,append([]string{exe},os.Args[1:]...),os.Environ());e!=nil{log.Printf("restart after update: %v",e)}}()}
+	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+	tag,changed,e:=performSelfUpdate();if e!=nil{writeError(w,502,e.Error());return};if !changed{writeJSON(w,map[string]any{"ok":true,"updated":false,"message":"当前已是最新版本："+tag});return};writeJSON(w,map[string]any{"ok":true,"updated":true,"message":"已更新到 "+tag+"，正在重启"});go func(){time.Sleep(1500*time.Millisecond);exe,e:=os.Executable();if e!=nil{log.Printf("restart after update: %v",e);return};if e=syscall.Exec(exe,append([]string{exe},os.Args[1:]...),os.Environ());e!=nil{log.Printf("restart after update: %v",e)}}()}
 
 func decodeJSON(w http.ResponseWriter,r *http.Request,dst any)error{r.Body=http.MaxBytesReader(w,r.Body,16<<10);defer r.Body.Close();d:=json.NewDecoder(r.Body);d.DisallowUnknownFields();if e:=d.Decode(dst);e!=nil{return e};if d.Decode(new(any))!=io.EOF{return errors.New("extra JSON data")};return nil}
 func saveWebConfig(path string,c Config)error{b,e:=json.MarshalIndent(c,"","  ");if e!=nil{return e};if e=os.MkdirAll(filepath.Dir(path),0700);e!=nil{return e};tmp:=path+".new";if e=os.WriteFile(tmp,append(b,'\n'),0600);e!=nil{return e};if e=os.Chmod(tmp,0600);e!=nil{_ = os.Remove(tmp);return e};if e=os.Rename(tmp,path);e!=nil{_ = os.Remove(tmp);return e};return nil}
