@@ -28,7 +28,10 @@ import (
 	"time"
 )
 
-var version = "0.1.5"
+var version = "0.3.0"
+
+// releaseAssetName is injected by CI for the matching architecture.
+var releaseAssetName = "wanipv4-watcher-linux-arm64"
 
 const defaultConfigPath = "/etc/storage/wanipv4-watcher.json"
 const maxResponseBytes = 64 * 1024
@@ -68,16 +71,17 @@ type Config struct {
 	NotifyOnRecovery   bool       `json:"notify_on_recovery"`
 	LogFile            string     `json:"log_file"`
 	SMTP               SMTPConfig `json:"smtp"`
+	WebPort            int        `json:"web_port"`
 }
 
 type Observation struct {
-	CheckedAt       time.Time
-	Interface       string
-	WANIP           string
-	ExternalIP      string
-	ProviderResults map[string]string
-	Status          string
-	Detail          string
+	CheckedAt       time.Time `json:"checked_at"`
+	Interface       string `json:"interface"`
+	WANIP           string `json:"wan_ip"`
+	ExternalIP      string `json:"external_ip"`
+	ProviderResults map[string]string `json:"provider_results"`
+	Status          string `json:"status"`
+	Detail          string `json:"detail"`
 }
 
 type Notice struct {
@@ -122,6 +126,7 @@ func main() {
 	testEmail := flag.Bool("test-email", false, "send a test email and exit")
 	checkConfig := flag.Bool("check-config", false, "validate configuration and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	update := flag.Bool("update", false, "download and install the latest Release binary")
 	flag.Parse()
 
 	if *showVersion {
@@ -146,6 +151,12 @@ func main() {
 	}
 	if *checkConfig {
 		log.Printf("configuration is valid (version %s)", version)
+		return
+	}
+	if *update {
+		tag, changed, err := performSelfUpdate()
+		if err != nil { log.Printf("update failed: %v", err); os.Exit(1) }
+		if changed { fmt.Printf("updated to %s; restart the service to use it\\n", tag) } else { fmt.Printf("already up to date: %s\\n", tag) }
 		return
 	}
 	if *testEmail {
@@ -176,7 +187,10 @@ func main() {
 		return
 	}
 
-	runMonitor(cfg)
+	cleanupStaleUpdateBackup()
+	app := newApp(cfg, *configPath)
+	go app.serveWeb()
+	runMonitor(app)
 }
 
 func loadConfig(path string) (Config, error) {
@@ -203,6 +217,7 @@ func loadConfig(path string) (Config, error) {
 	if len(cfg.CheckTimes) == 0 {
 		cfg.CheckTimes = []string{"07:00", "19:00"}
 	}
+	if cfg.WebPort == 0 { cfg.WebPort = 10005 }
 	// Always pin the checker to the four selected domestic sources. This also
 	// migrates persisted Padavan configs that still contain the old overseas URLs.
 	cfg.ExternalIPURLs = domesticExternalIPURLs()
@@ -282,6 +297,7 @@ func validateConfig(c Config) error {
 	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 {
 		return errors.New("http_timeout_seconds must be between 2 and 60")
 	}
+	if c.WebPort < 1 || c.WebPort > 65535 { return errors.New("web_port must be between 1 and 65535") }
 	if err := validateDomesticExternalIPURLs(c.ExternalIPURLs); err != nil {
 		return err
 	}
@@ -312,84 +328,20 @@ func validateConfig(c Config) error {
 	return nil
 }
 
-func runMonitor(cfg Config) {
-	log.Printf("WANIPv4-Watcher %s started; check_times=%s (router local time); interface=%s", version, strings.Join(cfg.CheckTimes, ","), cfg.WANInterface)
-	var previousStatus string
-	var previousDetail string
-	var pending []Notice
-
-	check := func() {
-		obs := observe(cfg)
-		logObservation(obs)
-		if obs.Status == "unknown" {
-			return
-		}
-		if previousStatus == "" {
-			// First observation is at the next scheduled check, not at startup.
-			if cfg.NotifyOnStart && shouldAlert(cfg, obs) {
-				pending = append(pending, makeAlertNotice(obs))
-			}
-		} else if obs.Status != previousStatus {
-			switch {
-			case obs.Status == "healthy" && isAbnormalStatus(previousStatus):
-				if cfg.NotifyOnRecovery {
-					pending = append(pending, makeRecoveryNotice(obs, previousStatus))
-				}
-			case isAbnormalStatus(obs.Status) && shouldAlert(cfg, obs):
-				pending = append(pending, makeAlertNotice(obs))
-			}
-		} else if obs.Status != "healthy" && obs.Detail != previousDetail && shouldAlert(cfg, obs) {
-			pending = append(pending, makeAlertNotice(obs))
-		}
-		previousStatus, previousDetail = obs.Status, obs.Detail
-
-		if len(pending) > 8 {
-			pending = pending[len(pending)-8:]
-		}
-		if len(pending) > 0 {
-			n := pending[0]
-			var sendErr error
-			// Retry mail delivery without repeating the WAN/IP check.
-			for attempt := 1; attempt <= 3; attempt++ {
-				sendErr = sendEmail(cfg.SMTP, n)
-				if sendErr == nil {
-					break
-				}
-				log.Printf("email send failed (attempt %d/3): %v", attempt, sendErr)
-				if attempt < 3 {
-					time.Sleep(10 * time.Second)
-				}
-			}
-			if sendErr != nil {
-				log.Printf("email will be retried at the next scheduled check")
-			} else {
-				log.Printf("email sent: %s", n.Subject)
-				pending = pending[1:]
-			}
-		}
-	}
-
+func runMonitor(app *App) {
+	log.Printf("WANIPv4-Watcher %s started", version)
 	for {
+		cfg := app.getConfig()
 		next, err := nextScheduledCheck(time.Now(), cfg.CheckTimes)
-		if err != nil {
-			log.Printf("cannot determine next check time: %v", err)
-			time.Sleep(time.Minute)
-			continue
+		if err != nil { log.Printf("cannot determine next check: %v", err); time.Sleep(time.Minute); continue }
+		timer := time.NewTimer(time.Until(next))
+		select {
+		case <-timer.C:
+			app.performCheck(true)
+		case <-app.reload:
+			if !timer.Stop() { select { case <-timer.C: default: } }
+			log.Printf("configuration reloaded")
 		}
-		wait := time.Until(next)
-		if wait < 0 {
-			wait = 0
-		}
-		log.Printf("next WAN IPv4 check scheduled at %s (router local time)", next.Format("2006-01-02 15:04:05 MST"))
-		timer := time.NewTimer(wait)
-		<-timer.C
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-		check()
 	}
 }
 

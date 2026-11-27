@@ -86,7 +86,7 @@ jobs:
           GOOS: linux
           GOARCH: arm64
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-arm64 ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-arm64" -o dist/wanipv4-watcher-linux-arm64 ./cmd/wanipv4-watcher
 
       - name: Build Linux ARMv7 hard-float
         env:
@@ -94,14 +94,14 @@ jobs:
           GOARCH: arm
           GOARM: '7'
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-armv7 ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-armv7" -o dist/wanipv4-watcher-linux-armv7 ./cmd/wanipv4-watcher
 
       - name: Build Linux AMD64
         env:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-amd64 ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-amd64" -o dist/wanipv4-watcher-linux-amd64 ./cmd/wanipv4-watcher
 
       - name: Build Linux MIPS little-endian soft-float
         env:
@@ -109,7 +109,7 @@ jobs:
           GOARCH: mipsle
           GOMIPS: softfloat
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-mipsle-softfloat" -o dist/wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
 
       - name: Build Linux MIPS little-endian hard-float
         env:
@@ -117,7 +117,7 @@ jobs:
           GOARCH: mipsle
           GOMIPS: hardfloat
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mipsle-hardfloat ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-mipsle-hardfloat" -o dist/wanipv4-watcher-linux-mipsle-hardfloat ./cmd/wanipv4-watcher
 
       - name: Build Linux MIPS big-endian soft-float
         env:
@@ -125,7 +125,7 @@ jobs:
           GOARCH: mips
           GOMIPS: softfloat
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mips-softfloat ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-mips-softfloat" -o dist/wanipv4-watcher-linux-mips-softfloat ./cmd/wanipv4-watcher
 
       - name: Build Linux MIPS big-endian hard-float
         env:
@@ -133,14 +133,14 @@ jobs:
           GOARCH: mips
           GOMIPS: hardfloat
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mips-hardfloat ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-mips-hardfloat" -o dist/wanipv4-watcher-linux-mips-hardfloat ./cmd/wanipv4-watcher
 
       - name: Build Linux RISC-V 64-bit
         env:
           GOOS: linux
           GOARCH: riscv64
           CGO_ENABLED: '0'
-        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-riscv64 ./cmd/wanipv4-watcher
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }} -X main.releaseAssetName=wanipv4-watcher-linux-riscv64" -o dist/wanipv4-watcher-linux-riscv64 ./cmd/wanipv4-watcher
 
       - name: Verify binary formats
         run: |
