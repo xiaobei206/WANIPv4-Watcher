@@ -138,7 +138,12 @@ start_service() {
         say "ERROR: base configuration validation failed; inspect startup diagnostics at $BOOTLOG and runtime logs in the Web UI RAM buffer."
         return 1
     fi
-    nohup "$BIN" -config "$CONFIG" >/dev/null 2>&1 </dev/null &
+    (
+        # Temporary proxy variables may be exported for a one-time update download.
+        # Never pass them into the long-running monitor process.
+        unset http_proxy https_proxy all_proxy no_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+        exec nohup "$BIN" -config "$CONFIG" >/dev/null 2>&1 </dev/null
+    ) &
     pid=$!
     echo "$pid" > "$PIDFILE"
     sleep 1

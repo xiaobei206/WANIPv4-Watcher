@@ -19,7 +19,7 @@ wget -q -T 120 -O /tmp/install-merlin.sh \
 sh /tmp/install-merlin.sh
 ```
 
-安装器内部先尝试 curl；curl 下载失败（包括固件 curl 不支持代理）会删除不完整文件并回退 Wget。Wget 使用系统标准的 `http_proxy` / `https_proxy` 环境变量（如已设置）。项目不内置任何特定局域网代理地址。
+安装器内部先尝试 curl；curl 下载失败（包括固件 curl 不支持代理）会删除不完整文件并回退 Wget。Wget 使用系统标准的 `http_proxy` / `https_proxy` 环境变量（如已设置）。项目不内置任何特定局域网代理地址。通过 SSH 临时导出的代理环境变量只用于当前下载/更新命令；管理脚本启动常驻 Go 监控进程前会清除大小写 HTTP(S)_PROXY、ALL_PROXY、NO_PROXY 变量，确保代理不会进入日常监控进程或被保存到配置。
 
 安装器不再询问 WAN、邮箱、授权码、收件地址或检测时间；这些业务设置全部在 WebUI 完成。首次安装只创建默认空 SMTP 配置并部署服务。已有配置会保留，升级不会覆盖邮箱凭证、设备昵称或备注。
 
@@ -104,7 +104,7 @@ WebUI 不设登录密码，只绑定发现的 LAN bridge 私有 IPv4；不监听
 
 已有 v0.3.1 安装可保留配置和 QQ 授权码，升级二进制与管理器即可。v0.3.2 新增的昵称和备注在升级前为空；升级后从 WebUI 设置即可。不要删除 `/jffs/configs/wanipv4-watcher.json`。
 
-在线更新使用程序的 Go HTTP 客户端和 SHA-256 校验。若设备无法直接访问 GitHub，可从可信终端准备对应 ARM64 Release 资产并按 checksums 校验后进行手动替换；本指南不把某一台局域网设备或代理地址写入安装逻辑。
+在线更新使用程序的 Go HTTP 客户端和 SHA-256 校验。若设备无法直接访问 GitHub，可在本次 SSH 会话中临时导出系统标准 `http_proxy` / `https_proxy`，再执行管理器 `update`；下载结束并重启服务后，代理变量不会传给常驻监控进程。也可从可信终端准备对应 ARM64 Release 资产并按 checksums 校验后进行手动替换。本指南不把某一台局域网设备或代理地址写入安装逻辑。
 
 ## 卸载
 
