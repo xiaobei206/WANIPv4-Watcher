@@ -8,7 +8,8 @@
 - 不把整个 `100.0.0.0/8` 全部屏蔽；增加边界测试防止错误拦截 /10 之外的合法地址。
 - 把私网、CGNAT、回环、链路本地、组播、保留/文档示例地址段的原因返回给 WAN 告警详情。
 - 按 IANA IPv4 Special-Purpose Address Registry 复核特殊用途地址范围，保留 192.0.0.9 和 192.0.0.10 的全球可达例外。
-- 新增类别说明文档；待 Actions 测试、Go vet、交叉编译和 Release 验证。
+- 新增类别说明文档。
+- GitHub Actions 实际结果：单元测试、`go vet`、Shell 语法检查、MIPSLE soft-float、AMD64 编译以及 Release 发布均通过。
 
 ## v0.1.5 — 将 Padavan 启动逻辑收回 GitHub
 
@@ -16,7 +17,7 @@
 - 启动器根据导出的 SMTP 用户、QQ 邮箱授权码和收件地址，在 `/tmp` 生成权限为 600 的 JSON 配置；凭证变量在启动 Go 进程前解除导出/清除，不写进仓库。
 - 启动器继续从 GitHub Release 下载 MIPSLE soft-float Go 二进制和 SHA-256 清单，校验后 `chmod 700` 并启动。
 - README、交接索引和 Padavan 中文文档已更新；新增 shell 语法检查步骤。
-- 待 GitHub Actions 运行并发布 v0.1.5；K2P 实机网络访问和邮件投递仍需设备侧验证。
+- GitHub Actions 单元测试、`go vet`、Shell 语法检查、MIPSLE soft-float / AMD64 编译和 v0.1.5 Release 发布均通过。K2P 实机网络访问和邮件投递仍需设备侧验证。
 
 ## v0.1.4 — 固定四个国内公网 IP 检测源
 

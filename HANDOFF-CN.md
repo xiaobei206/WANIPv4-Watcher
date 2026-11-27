@@ -18,6 +18,8 @@
 - `docs/PADAVAN-INSTALL-CN.md`：实机安装和卸载步骤。
 - `docs/TROUBLESHOOTING-CN.md`：下载、配置、SMTP、地址判断排错。
 - `DEVELOPMENT-LOG-CN.md`：累计开发与验证记录。
+- `CHANGELOG.md`：完整中文版本更新记录。
+- `docs/releases/v版本号-CN.md`：正式 Release 页面使用的中文版本说明。
 - `.github/workflows/build.yml`：自动测试、交叉编译、校验和、中文构建报告与 Release。
 - `WANIPv4-Watcher-BUILD-REPORT-CN-v版本号.md`：由 CI 生成的版本化构建报告（在每次 Actions 构建产物/Release 中）。
 

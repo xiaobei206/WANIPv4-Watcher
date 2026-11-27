@@ -169,8 +169,14 @@ jobs:
             fi
             echo "do_publish=true" >> "$GITHUB_OUTPUT"
           elif git ls-remote --exit-code --refs origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "Release v$VERSION already exists; main-branch build will not overwrite it."
-            echo "do_publish=false" >> "$GITHUB_OUTPUT"
+            NOTES_FILE="docs/releases/v${VERSION}-CN.md"
+            if [[ -f "$NOTES_FILE" ]] && git diff --name-only "${GITHUB_SHA}^" "$GITHUB_SHA" | grep -Fxq "$NOTES_FILE"; then
+              echo "Chinese release notes changed; updating the existing Release v$VERSION."
+              echo "do_publish=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release v$VERSION already exists; this commit does not update its Chinese release notes."
+              echo "do_publish=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "No v$VERSION tag exists yet; publishing the initial version from this commit."
             echo "do_publish=true" >> "$GITHUB_OUTPUT"
@@ -183,7 +189,8 @@ jobs:
           tag_name: v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
           name: WANIPv4-Watcher v${{ steps.meta.outputs.version }}
-          generate_release_notes: true
+          generate_release_notes: false
+          body_path: docs/releases/v${{ steps.meta.outputs.version }}-CN.md
           make_latest: true
           overwrite_files: true
           files: |
