@@ -1,0 +1,184 @@
+#!/bin/sh
+# Install or update WANIPv4-Watcher on ASUSWRT-Merlin.
+set -eu
+umask 077
+
+REPO_RAW="https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main"
+SCRIPTS="/jffs/scripts"
+CONFIG_DIR="/jffs/configs"
+CONFIG="$CONFIG_DIR/wanipv4-watcher.json"
+MANAGER="$SCRIPTS/wanipv4-watcher"
+STARTED="$SCRIPTS/services-start"
+MANAGER_TMP="/tmp/wanipv4-watcher-merlin.new"
+START_TMP="/tmp/services-start.wanipv4-watcher.$$"
+MARKER="# BEGIN WANIPv4-Watcher-Merlin"
+END_MARKER="# END WANIPv4-Watcher-Merlin"
+
+say() { printf '%s\n' "[WANIPv4-Watcher Merlin installer] $*"; }
+fail() { say "ERROR: $*"; exit 1; }
+
+fetch() {
+    url="$1"
+    dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --connect-timeout 10 --max-time 60 "$url" -o "$dest"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -T 60 -O "$dest" "$url"
+    else
+        fail "curl or wget is required."
+    fi
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+valid_email() {
+    printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+    fail "please SSH into the router as the administrator/root account."
+fi
+ARCH="$(uname -m 2>/dev/null || true)"
+case "$ARCH" in
+    aarch64|arm64) ;;
+    *) fail "this installer requires ARM64/AArch64; uname -m reported '$ARCH'." ;;
+esac
+if [ ! -d /jffs ] || [ ! -w /jffs ]; then
+    fail "/jffs is not writable. Enable the JFFS partition in Merlin System settings first."
+fi
+if ! command -v nvram >/dev/null 2>&1; then
+    fail "nvram command not found; this does not look like an ASUSWRT-Merlin shell."
+fi
+JFFS_SCRIPTS="$(nvram get jffs2_scripts 2>/dev/null || true)"
+if [ "$JFFS_SCRIPTS" != "1" ]; then
+    fail "enable 'Enable JFFS custom scripts and configs' in Administration > System, apply, then rerun this installer."
+fi
+if ! command -v sha256sum >/dev/null 2>&1 && ! command -v openssl >/dev/null 2>&1; then
+    fail "sha256sum or openssl is required to verify the release binary."
+fi
+
+mkdir -p "$SCRIPTS" "$CONFIG_DIR"
+
+if [ -f "$STARTED" ] && grep -F "$MARKER" "$STARTED" >/dev/null 2>&1 &&
+   ! grep -F "$END_MARKER" "$STARTED" >/dev/null 2>&1; then
+    fail "the existing services-start script has an incomplete WANIPv4-Watcher marker; no startup file was changed."
+fi
+
+if [ ! -f "$CONFIG" ]; then
+    DETECTED_IF="$(ip -4 route show default 2>/dev/null | awk 'NR == 1 { for (i=1; i<=NF; i++) if ($i == "dev") { print $(i+1); exit } }' || true)"
+    case "$DETECTED_IF" in
+        ""|*[!A-Za-z0-9_.:-]*) DETECTED_IF="auto" ;;
+    esac
+    printf 'WAN interface detected from the first default route: %s\n' "$DETECTED_IF"
+    printf 'WAN interface [Enter accepts %s; type auto for automatic detection]: ' "$DETECTED_IF"
+    IFS= read -r WAN_IF || fail "could not read WAN interface."
+    WAN_IF="${WAN_IF:-$DETECTED_IF}"
+    case "$WAN_IF" in
+        auto) ;;
+        ""|*[!A-Za-z0-9_.:-]*) fail "invalid interface name '$WAN_IF'." ;;
+    esac
+
+    printf 'QQ Mail address used to send alerts: '
+    IFS= read -r SMTP_USER || fail "could not read sender address."
+    valid_email "$SMTP_USER" || fail "invalid sender email address."
+
+    printf 'QQ Mail SMTP authorization code (not the QQ login password; input hidden): '
+    if [ -t 0 ] && [ -t 1 ] && command -v stty >/dev/null 2>&1; then
+        stty -echo
+        trap 'stty echo 2>/dev/null || true' 0
+        if ! IFS= read -r SMTP_AUTH_CODE; then
+            exit 1
+        fi
+        trap - 0
+        stty echo
+        printf '\n'
+    else
+        IFS= read -r SMTP_AUTH_CODE || fail "could not read SMTP authorization code."
+    fi
+    [ -n "$SMTP_AUTH_CODE" ] || fail "SMTP authorization code must not be empty."
+
+    printf 'Email address to receive alerts: '
+    IFS= read -r SMTP_TO || fail "could not read recipient address."
+    valid_email "$SMTP_TO" || fail "invalid recipient email address."
+
+    SMTP_USER_JSON="$(json_escape "$SMTP_USER")"
+    SMTP_AUTH_JSON="$(json_escape "$SMTP_AUTH_CODE")"
+    SMTP_TO_JSON="$(json_escape "$SMTP_TO")"
+    WAN_IF_JSON="$(json_escape "$WAN_IF")"
+    CONFIG_TMP="$CONFIG.tmp.$$"
+    cat > "$CONFIG_TMP" <<CONFIG_JSON
+{
+  "wan_interface": "$WAN_IF_JSON",
+  "check_times": ["07:00", "19:00"],
+  "http_timeout_seconds": 8,
+  "external_ip_urls": [
+    "https://myip.ipip.net",
+    "http://ip.3322.net",
+    "https://cip.cc",
+    "https://ip9.com.cn/get"
+  ],
+  "alert_on_private_wan": true,
+  "notify_on_start": true,
+  "notify_on_recovery": true,
+  "log_file": "/tmp/wanipv4-watcher.log",
+  "smtp": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "username": "$SMTP_USER_JSON",
+    "password": "$SMTP_AUTH_JSON",
+    "from": "$SMTP_USER_JSON",
+    "to": ["$SMTP_TO_JSON"]
+  }
+}
+CONFIG_JSON
+    chmod 600 "$CONFIG_TMP"
+    mv -f "$CONFIG_TMP" "$CONFIG"
+    unset SMTP_AUTH_CODE SMTP_AUTH_JSON
+    say "created private config at $CONFIG (permissions 600)."
+else
+    chmod 600 "$CONFIG"
+    say "existing config preserved at $CONFIG."
+fi
+
+fetch "$REPO_RAW/scripts/bootstrap-merlin.sh" "$MANAGER_TMP" || fail "could not download bootstrap-merlin.sh."
+sh -n "$MANAGER_TMP" || fail "downloaded bootstrap-merlin.sh did not pass shell syntax validation."
+chmod 755 "$MANAGER_TMP"
+mv -f "$MANAGER_TMP" "$MANAGER"
+
+if [ -f "$STARTED" ]; then
+    awk '
+        /# BEGIN WANIPv4-Watcher-Merlin/ { skip = 1; next }
+        /# END WANIPv4-Watcher-Merlin/   { skip = 0; next }
+        !skip { print }
+    ' "$STARTED" > "$START_TMP"
+else
+    printf '#!/bin/sh\n' > "$START_TMP"
+fi
+
+cat >> "$START_TMP" <<'MERLIN_BOOT'
+
+# BEGIN WANIPv4-Watcher-Merlin
+(
+    sleep 5
+    /jffs/scripts/wanipv4-watcher start
+) >/tmp/wanipv4-watcher-bootstrap.log 2>&1 &
+# END WANIPv4-Watcher-Merlin
+MERLIN_BOOT
+
+chmod 755 "$START_TMP"
+mv -f "$START_TMP" "$STARTED"
+chmod 755 "$STARTED"
+
+say "installed manager at $MANAGER and preserved other services-start content."
+say "starting the monitor now; it downloads the matching ARM64 release and verifies SHA-256."
+if "$MANAGER" start; then
+    say "installation complete. Check mail with: $MANAGER test-email"
+else
+    say "the startup hook/config were installed, but the immediate download/start failed."
+    say "inspect /tmp/wanipv4-watcher-bootstrap.log and rerun: $MANAGER start"
+    exit 1
+fi
+say "scheduled checks use router local time at 07:00 and 19:00."
+say "config: $CONFIG ; logs: /tmp/wanipv4-watcher.log and /tmp/wanipv4-watcher-bootstrap.log"

@@ -1,212 +1,135 @@
 # WANIPv4-Watcher
 
-**为 K2P / Padavan 设计的 WAN IPv4 监控与 QQ 邮件告警工具。** 当前版本：`0.1.6`。
+**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.2.0`。
 
-完整中文版本历史见 [更新日志（CHANGELOG.md）](CHANGELOG.md)，正式发布页也会使用对应的中文更新说明。
+程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，通过 QQ 邮件发送告警与恢复通知。
 
-它定期读取路由器默认 IPv4 路由对应网卡的地址，并与 IPIP、3322、CIP.cc、IP9 四个国内服务返回的公网 IPv4 交叉验证。如果 WAN 口地址变成私网、运营商共享地址（CGNAT），或与公网出口地址持续不一致，就发送 QQ 邮件告警；恢复一致后发送恢复通知。
+- 默认每天按路由器本地时间 **07:00、19:00** 检查各一次，启动时不会额外检查。
+- 至少两个外部检测源返回相同的有效公网 IPv4 才形成结论；结果不足或冲突时报告 **unknown**，不猜测结论。
+- 使用 Go 标准库，所有发布二进制均以 **CGO_ENABLED=0** 编译。
+- 运行文件与日志可放在 **/tmp**；持久化配置和开机启动由对应系统管理。
+- 需要匹配 CPU 架构、大小端及浮点 ABI。已编译不等于每个路由器型号都经过实机验证。
 
+## 1. 通用使用方法：手动下载、校验、运行
 
-## 快速部署到 Padavan（只需复制下面这段）
+这套方法适合会使用 SSH 和 Linux 命令的路由器/软路由用户。**先选择与设备完全匹配的二进制，再配置邮件；开机自启放在下面的“系统专用安装”章节。**
 
-进入路由器管理页面：**参数设置 → 脚本 → 在路由器启动后执行**。把下面这段追加到原有脚本末尾，**不要覆盖你已有的 TCP、drop_caches、udpxy 等命令**。只需先填写三项邮件信息：
+### 选择正确的架构文件
 
-- `WANIPV4_SMTP_USER`：发送告警的 QQ 邮箱地址
-- `WANIPV4_SMTP_AUTH_CODE`：QQ 邮箱的 SMTP 授权码，不是 QQ 登录密码
-- `WANIPV4_SMTP_TO`：接收告警的邮箱地址
+| Release 文件名 | 常见设备/用途示例 | 选择时注意 |
+|---|---|---|
+| **wanipv4-watcher-linux-arm64** | ASUS RT-AC86U（梅林，aarch64）；Xiaomi AX3000T RD03/RD23 等 ARM64 OpenWrt 设备 | RT-AC86U 目标架构已由设备输出确认；仍需核对硬件版本和固件 |
+| **wanipv4-watcher-linux-armv7** | Netgear R7800、Linksys WRT1900ACS 等 ARMv7 路由器 | 32 位 ARMv7，固件 ABI 必须兼容 |
+| **wanipv4-watcher-linux-amd64** | OpenWrt/iStoreOS x86-64 软路由、迷你主机 | 适用于 64 位 x86 Linux，不是 ARM64 |
+| **wanipv4-watcher-linux-mipsle-softfloat** | K2P / Padavan | 现有 K2P 目标；小端 MIPS 软浮点 |
+| **wanipv4-watcher-linux-mipsle-hardfloat** | 使用小端 MIPS 硬浮点用户态的设备 | 必须确认固件 ABI，不能与 soft-float 混用 |
+| **wanipv4-watcher-linux-mips-softfloat** | 部分大端 MIPS/Atheros 路由器 | 大端 MIPS 软浮点，需核对 ABI |
+| **wanipv4-watcher-linux-mips-hardfloat** | 少量匹配大端 MIPS 硬浮点 ABI 的设备 | 需核对 CPU、大小端和用户态 ABI |
+| **wanipv4-watcher-linux-riscv64** | 64 位 RISC-V Linux 设备/开发板 | 编译目标已提供，消费级路由器实机覆盖较少 |
 
-```sh
-# --- BEGIN WANIPv4-Watcher ---
-WANIPV4_SMTP_USER='你的QQ邮箱@qq.com'
-WANIPV4_SMTP_AUTH_CODE='你的QQ邮箱授权码'
-WANIPV4_SMTP_TO='接收告警的邮箱地址'
-export WANIPV4_SMTP_USER WANIPV4_SMTP_AUTH_CODE WANIPV4_SMTP_TO
+Release 资产名已包含架构信息，文件名下面的说明列补充了少量常见型号/用途。型号示例不是对所有硬件修订版或所有固件的兼容保证。**本项目不编译过旧的 ARMv6、ARMv5，也不编译 32 位 x86（386）。**
 
-(
-    sleep 5
-    URL='https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/bootstrap.sh'
-    if command -v wget >/dev/null 2>&1; then
-        wget -q -T 60 -O /tmp/wanipv4-watcher-bootstrap.sh "$URL" ||
-        curl -fsSL --connect-timeout 10 --max-time 60 "$URL" -o /tmp/wanipv4-watcher-bootstrap.sh
-    elif command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 10 --max-time 60 "$URL" -o /tmp/wanipv4-watcher-bootstrap.sh
-    else
-        echo '[WANIPv4-Watcher] wget/curl is missing'
-        exit 1
-    fi
-    sh -n /tmp/wanipv4-watcher-bootstrap.sh &&
-        sh /tmp/wanipv4-watcher-bootstrap.sh start
-) >/tmp/wanipv4-watcher-bootstrap.log 2>&1 &
-# --- END WANIPv4-Watcher ---
-```
+### 下载并校验 SHA-256
 
-点页面的**应用/保存**即可。路由器启动时会自动从本仓库下载 `scripts/bootstrap.sh`；它再从 GitHub Release 下载编译好的 MIPSLE Go 程序，校验 SHA-256、设置执行权限并启动。你不需要手动下载二进制，也不需要把整套 JSON 或长脚本粘贴到路由器。
+先在 Release 页面选择一个二进制。下面以 ARM64 为例；其他架构只需要把 ASSET 改成实际文件名。
 
-邮件配置和程序运行文件在 `/tmp` 中生成，日志也保存在 `/tmp`，无需为这些文件反复写闪存。启动脚本中的三项邮箱值会随路由器配置保存；请勿把真实授权码发布到公开仓库或截图中。详细说明见 [Padavan 精简启动脚本文档](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)。
+Release 页面：[最新版本与全部文件](https://github.com/xiaobei206/WANIPv4-Watcher/releases/latest)。
 
-## 功能
+~~~sh
+ASSET=wanipv4-watcher-linux-arm64
+BASE=https://github.com/xiaobei206/WANIPv4-Watcher/releases/latest/download
 
-- 使用 Go 标准库实现，不依赖第三方 Go 模块。
-- 针对 K2P 常见的 MIPS little-endian、soft-float 环境交叉编译；二进制静态链接，运行文件放在 `/tmp`（内存文件系统），不会把可执行文件反复写入闪存。
-- 默认每天上午 07:00、晚上 19:00 各检查一次，不会在程序启动时额外检查；时间以路由器系统本地时钟为准。旧版配置没有 `check_times` 时会自动采用这两个时刻。
-- **只使用四个指定的国内检测源**：IPIP、3322、CIP.cc、IP9；不调用 ipify、icanhazip、AWS 等海外检测源。
-- 自动解析 IPIP/CIP 的说明文本、3322 的纯文本和 IP9 的 JSON（`data.ip`）；至少两个来源一致才确认结果。
-- 旧版配置即使仍保留海外 URL，升级后的程序也会在内存中将其替换为这四个固定国内来源，不需要把海外网站留作备用。
-- 区分 `private_wan`、`mismatch`、`healthy` 与 `unknown`。检测源不足或 WAN 没有地址时不会假装判断成功，也不会发送虚假的“恢复”通知。
-- 使用 QQ 邮箱 SMTP SSL（465 端口）；密码必须是 QQ 邮箱授权码。
-- SHA-256 校验下载的二进制文件后才执行。
-- 日志限制在 `/tmp/wanipv4-watcher.log` 和一个轮转备份内；推荐网页启动方式下，配置在每次开机时于 `/tmp` 重建。
-- GitHub Actions 自动测试、交叉编译并发布版本资产。
+curl -fsSL "$BASE/$ASSET" -o "$ASSET"
+curl -fsSL "$BASE/checksums.txt" -o checksums.txt
 
-## WAN IPv4 范围判定说明
+EXPECTED="$(awk -v asset="$ASSET" '$2 == asset {print $1; exit}' checksums.txt)"
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL="$(sha256sum "$ASSET" | awk '{print $1}')"
+elif command -v openssl >/dev/null 2>&1; then
+    ACTUAL="$(openssl dgst -sha256 "$ASSET" | awk '{print $NF}')"
+else
+    echo "Need sha256sum or openssl; refusing to use an unchecked binary."
+    exit 1
+fi
 
-程序不是只匹配字符串 `100.64`。运营商共享地址按 CIDR 网段 `100.64.0.0/10` 判定，完整范围是 **100.64.0.0–100.127.255.255**；因此 `100.71.x.x` 会被识别为 CGNAT/非公网 WAN 地址。判断也会排除 RFC1918 私网、回环、链路本地、组播、保留及文档示例地址段。日志/邮件会说明具体命中的类别。
+[ -n "$EXPECTED" ] && [ "$EXPECTED" = "$ACTUAL" ] || {
+    echo "SHA-256 mismatch"
+    exit 1
+}
+chmod 700 "$ASSET"
+cp "$ASSET" /tmp/wanipv4-watcher
+~~~
 
-不会把所有 `100.0.0.0/8` 一刀切，因为 `100.64.0.0/10` 以外的范围不能仅凭首段是 100 就认定为 CGNAT。该分类依据 [IANA IPv4 Special-Purpose Address Registry](https://www.iana.org/assignments/iana-ipv4-special-registry)。
+如果设备没有 curl，可以使用能访问 HTTPS 的 wget 下载。项目的固件专用安装器会自动处理下载与校验。
 
-## 固定使用的国内检测源
+### 配置邮箱并执行检查
 
-| 服务 | 接口 | 响应格式 |
-| --- | --- | --- |
-| IPIP | `https://myip.ipip.net` | 含 IP 的说明文本 |
-| 3322 | `http://ip.3322.net` | 纯文本 IPv4（该服务公开示例为 HTTP） |
-| CIP.cc | `https://cip.cc` | 含 IP 的说明文本 |
-| IP9 | `https://ip9.com.cn/get` | JSON，优先读取 `data.ip` |
+下载项目中的配置模板，然后复制到该 Linux 系统适合的持久化配置位置。普通 Linux 示例使用 **/etc/wanipv4-watcher.json**；梅林请使用后面的专用安装器，不要把配置留在临时的 /etc。
 
-程序不会使用海外检测站。3322 当前公开接口为 HTTP，因此其单个响应并不作为最终结论；程序会对四个结果交叉验证，至少两个独立返回值一致才确认出口 IPv4。结果不足或无法形成唯一共识时维持 `unknown`，不发出地址不一致判断。
+~~~sh
+curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/config.example.json -o config.example.json
+cp config.example.json /etc/wanipv4-watcher.json
+chmod 600 /etc/wanipv4-watcher.json
+vi /etc/wanipv4-watcher.json
+~~~
 
-## 推荐安装：使用 Padavan 原生“路由器启动后执行”脚本
+至少修改 smtp.username、smtp.password、smtp.from、smtp.to。QQ 邮箱必须填写 **SMTP 授权码**，不是 QQ 登录密码；不要把真实授权码提交到 GitHub。wan_interface 可以设为 auto；如果设备有双默认路由、策略路由或 VPN，应填实际 WAN 接口名。external_ip_urls 会被程序固定替换为四个国内检测源。
 
-在 Padavan Web 管理页打开“参数设置 → 脚本 → 在路由器启动后执行”，把 [精简调用脚本](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)中的短代码追加到末尾，仅填写三个邮件变量。下载二进制、SHA-256 校验、赋予执行权限、检查配置和启动进程均由 GitHub 上的 `scripts/bootstrap.sh` 负责，不需要手动下载或复制 Go 程序。
+验证配置、邮件和单次检测：
 
-此方式下，配置路径为 `/tmp/wanipv4-watcher.json`。真实 QQ 邮箱授权码只写在路由器的 Padavan 脚本配置中，不要提交到 GitHub。
+~~~sh
+/tmp/wanipv4-watcher -config /etc/wanipv4-watcher.json -check-config
+/tmp/wanipv4-watcher -config /etc/wanipv4-watcher.json -test-email
+/tmp/wanipv4-watcher -config /etc/wanipv4-watcher.json -once
+~~~
 
-### 旧版 SSH 安装方式（兼容保留）
+前台运行监控程序：
 
-如果你此前已经安装旧版命令行启动钩子，原安装器仍可用于兼容维护；新部署优先使用上面的 Padavan 原生脚本入口。先确保路由器能正常访问 GitHub，并通过 SSH 以管理员/root 身份登录 K2P。将下面命令粘贴到路由器 SSH 终端：
+~~~sh
+/tmp/wanipv4-watcher -config /etc/wanipv4-watcher.json
+~~~
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/install-padavan.sh | sh
-```
+如需断开 SSH 后继续运行，可以临时用 nohup，但**重启后自动启动必须配置本系统的启动机制**。不要把同一份启动脚本盲目复制到所有固件。
 
-如果固件没有 `curl`，可使用：
+## 2. 系统专用安装方式
 
-```sh
-wget -qO- https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/install-padavan.sh | sh
-```
+通用手动方法用于下载、校验和验证程序；系统专用安装器负责持久化配置、开机自启、升级与卸载。
 
-安装脚本会保留你现有的 `/etc/storage/started_script.sh` 内容，并在每次运行时刷新本工具自己的标记区块，不会覆盖邮箱配置。**Padavan 的关键点是：写入 `/etc/storage` 后还必须执行保存到闪存的操作**；新安装器会自动调用 `/sbin/mtd_storage.sh save`（或固件提供的对应路径），不能保存时会明确报错。启动钩子还会在开机时重试下载，避免网络或 GitHub 尚未就绪导致单次启动失败。
+### ASUSWRT-Merlin
 
-### 配置 QQ 邮箱
+针对 ARM64/AArch64 的 RT-AC86U 等设备，提供一条命令安装，自动创建 services-start 启动钩子，保留现有脚本内容，交互配置邮件并下载校验 ARM64 Release 文件。
 
-编辑路由器上的配置文件：
+- 中文指南：[梅林安装、升级、测试和卸载](docs/MERLIN-INSTALL-CN.md)
+- 安装器：scripts/install-merlin.sh
+- 启动/管理器：scripts/bootstrap-merlin.sh
+- 卸载器：scripts/uninstall-merlin.sh
 
-```sh
-vi /tmp/wanipv4-watcher.json
-```
+### Padavan
 
-至少修改以下字段：
+现有 K2P 安装路径继续保留。推荐在 Padavan Web UI 的“参数设置 → 脚本 → 在路由器启动后执行”中追加简短启动脚本，也保留旧版 SSH 安装器。
 
-- `smtp.username`：发送告警的 QQ 邮箱地址。
-- `smtp.password`：QQ 邮箱生成的**授权码**，不是 QQ 登录密码。
-- `smtp.from`：通常填与 `smtp.username` 相同的地址。
-- `smtp.to`：接收告警的邮箱，可以是 QQ 邮箱或其他邮箱。
+- [Padavan 网页启动脚本](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)
+- [Padavan 安装指南](docs/PADAVAN-INSTALL-CN.md)
 
-默认 SMTP 是 `smtp.qq.com:465`。首次使用前，需要在 QQ 邮箱设置中开启 SMTP 服务并生成授权码。配置文件权限为 `600`，凭证不会上传 GitHub，也不进入程序编译产物。
+### OpenWrt、iStoreOS、DD-WRT 等
 
-**编辑完配置后，必须再保存一次到 Padavan 闪存**，否则重启后可能恢复成旧配置：
+当前 Release 提供多个 Linux 架构的手动部署二进制；除上面列出的 Padavan 和梅林外，暂不为每一种固件维护专用安装器。真正需要时再依据该系统的服务管理机制增加安装脚本，避免误覆盖用户自己的启动项。
 
-```sh
-/sbin/mtd_storage.sh save
-```
+## 3. 告警状态说明
 
-如果固件没有该命令，请在路由器 Web 管理页进入“系统管理”，选择“保存 `/etc/storage/` 内容到闪存”，然后应用。也可以重新运行上面的安装命令：更新版安装器会保留现有配置、刷新启动钩子，并再次保存整个 `/etc/storage`。这一点正是修复旧安装重启失效的关键。
+| 状态 | 意义 |
+|---|---|
+| **private_wan** | WAN 地址属于 RFC1918 私网、100.64.0.0/10 运营商共享地址（CGNAT）或其他特殊/不可全球路由地址段 |
+| **mismatch** | WAN 本身是公网 IPv4，但与至少两个检测源一致确认的公网出口地址不同 |
+| **healthy** | WAN IPv4 与公网出口 IPv4 一致 |
+| **unknown** | WAN 地址不可读取或外部检测源不足/冲突；本轮不做猜测 |
 
-### 启动和测试
+其中 100.64.0.0/10 完整范围为 **100.64.0.0–100.127.255.255**，不能只按 100.64 开头的字符串匹配。即使发现 WAN 与出口地址不同，也不能单凭这一项认定运营商主动变更了套餐或线路配置；上游 NAT、光猫路由模式、双 WAN 和 VPN 都可能造成差异。
 
-编辑好配置后，可立即手动启动（不必重启路由器）：
+## 4. 开发与验证
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/bootstrap.sh -o /tmp/wanipv4-watcher-bootstrap.sh && sh /tmp/wanipv4-watcher-bootstrap.sh start
-```
-
-如果没有 `curl`：
-
-```sh
-wget -q -O /tmp/wanipv4-watcher-bootstrap.sh https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/bootstrap.sh && sh /tmp/wanipv4-watcher-bootstrap.sh start
-```
-
-验证 QQ 邮件发送：
-
-```sh
-/tmp/wanipv4-watcher -config /tmp/wanipv4-watcher.json -test-email
-```
-
-查看运行状态与日志：
-
-```sh
-sh /tmp/wanipv4-watcher-bootstrap.sh status
-tail -n 80 /tmp/wanipv4-watcher.log
-tail -n 80 /tmp/wanipv4-watcher-bootstrap.log
-```
-
-使用推荐的 Padavan 网页脚本方式时，Padavan 的“路由器启动后执行”文本框就是持久化启动入口，程序和运行时配置都放在 `/tmp`。旧版 SSH 安装方式仍使用 `started_script.sh`。若重启后需要确认是否成功下载启动，查看 `/tmp/wanipv4-watcher-bootstrap.log`。如果希望再次触发当前会话的启动钩子，先确认脚本不会影响其他自定义启动动作；也可直接运行上面的 bootstrap 命令。
-
-## WAN 网卡自动识别
-
-默认 `wan_interface: "auto"`：程序读取 `/proc/net/route`，选择活动 IPv4 默认路由所对应的网卡，并读取该网卡地址。PPPoE 通常会显示为 `ppp0`；其他固件可能显示为 VLAN 或以太网接口。
-
-如果路由器上使用策略路由、多 WAN、特殊 VPN 或自动识别到的不是 WAN 接口，请先运行：
-
-```sh
-cat /proc/net/route
-ip -4 addr 2>/dev/null || ifconfig
-```
-
-然后把 `wan_interface` 改成实际 WAN 接口名，例如 `ppp0`。不要照抄示例接口名，应以你路由器的实际输出为准。
-
-## 告警规则
-
-| 状态 | 处理方式 |
-| --- | --- |
-| `private_wan` | WAN 地址属于 RFC1918 私网、100.64.0.0/10 运营商共享地址（CGNAT，覆盖 100.64.0.0–100.127.255.255）或其他特殊/不可全球路由地址段时告警，并在邮件说明命中的具体地址类别。 |
-| `mismatch` | WAN 地址是公网 IPv4，但和至少两个公网检测源一致确认的出口地址不同。 |
-| `healthy` | WAN IPv4 与公网检测结果一致；若此前有异常且邮件配置可用，则发送恢复通知。 |
-| `unknown` | 无法确认 WAN 地址，或至少两个外部查询源没有形成一致结果；本轮不作判断。 |
-
-WAN 与出口地址不一致是异常信号，但不能单凭这一点认定一定是电信主动收回公网 IPv4；光猫路由模式、上游 NAT、双 WAN 或 VPN 都可能导致地址不一致。
-
-## 目录
-
-- `cmd/wanipv4-watcher/main.go`：监控、公网检测、SMTP 告警。
-- `config.example.json`：本地配置模板（不含真实凭证）。
-- `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：推荐的 Padavan 网页启动脚本模板。
-- `scripts/install-padavan.sh`：旧版 SSH 安装器（兼容保留）。
-- `scripts/bootstrap.sh`：根据路由器启动脚本传入的邮件变量在 RAM 生成配置，然后下载 Release 二进制、SHA-256 校验、赋予执行权限、启动、停止和状态检查。
-- `scripts/uninstall-padavan.sh`：卸载启动钩子，保留邮箱配置。
-- `docs/PADAVAN-INSTALL-CN.md`：安装细节。
-- `docs/TROUBLESHOOTING-CN.md`：排错说明。
-- `HANDOFF-CN.md`：交付文件索引。
-- `DEVELOPMENT-LOG-CN.md`：累计开发记录。
-- `WANIPv4-Watcher-BUILD-REPORT-CN-v版本号.md`：由 GitHub Actions 生成的版本化构建报告，并作为 Release 资产提供。
-
-## 开发与发布
-
-本地检查：
-
-```sh
-go test ./...
-go vet ./...
-VERSION="$(tr -d '[:space:]' < VERSION)"
-GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 \\
-  go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${VERSION}" \\
-  -o wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
-```
-
-推送到 `main` 后，GitHub Actions 会运行测试并生成 `linux/mipsle softfloat` 和 `linux/amd64` 二进制。如果 `VERSION` 对应的 `v版本号` 还没有标签，首次构建会创建对应 Release；以后改动代码应先更新 `VERSION`，然后提交到 `main`，或推送匹配的 `v*` 标签发布新版本。Release 附带版本化二进制、稳定下载文件名、源码包、中文构建报告和 `checksums.txt`。
-
-## 当前限制
-
-- 暂无 Web 管理界面；邮箱和网卡通过 JSON 配置。
-- 第一版面向单 WAN IPv4；如果使用双 WAN、VPN 出口或多级 NAT，应明确指定 WAN 接口并结合当前网络拓扑解释告警。
-- 需要路由器可下载 GitHub Release，且固件包含 `curl` 或支持 HTTPS 的 `wget`，并有 `sha256sum` 或 `openssl` 供校验。
+- Go 单元测试：**go test ./...**
+- 静态检查：**go vet ./...**
+- GitHub Actions 为每个构建目标交叉编译，并生成 checksums.txt 与中文构建报告。
+- 每个 Release 资产的说明列给出少量型号/用途示例；使用前仍需核对具体硬件修订版与固件 ABI。
+- 所有构建目标均设置 CGO_ENABLED=0。编译通过不代表所有型号都经过设备实测。

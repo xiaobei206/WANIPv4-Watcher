@@ -1,38 +1,52 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.1.6
+# HANDOFF-CN — WANIPv4-Watcher v0.2.0
 
 ## 项目目标
 
-在 K2P Padavan 上低写入地监控 WAN IPv4 与公网出口 IPv4 是否一致，并通过 QQ 邮件告警。
+用一份 Go 核心程序在 Linux 路由器与软路由上监控 WAN IPv4 与公网出口 IPv4，并在检测到私网/CGNAT 地址或 WAN/出口不一致时通过 QQ 邮件告警。
+
+## 当前设计
+
+- 固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 检测源，至少两个来源一致才形成出口 IP 结论。
+- 默认按路由器本地时间每天 07:00、19:00 检查；程序启动时不额外执行检测。
+- 使用 RFC1918、完整 100.64.0.0/10 和其他特殊用途地址分类，异常邮件包含原因说明。
+- 配置独立存放；运行二进制、PID 和日志可放在 /tmp，减少不必要的闪存写入。
+- 所有架构使用 CGO_ENABLED=0 编译，构建流程生成 SHA-256 清单与中文构建报告。
+
+## Release 架构目标
+
+- linux/arm64：ASUSWRT-Merlin RT-AC86U 等 ARM64 设备。
+- linux/arm / GOARM=7：32 位 ARMv7。
+- linux/amd64：x86-64 软路由。
+- linux/mipsle：soft-float 和 hard-float。
+- linux/mips：soft-float 和 hard-float。
+- linux/riscv64：64 位 RISC-V Linux。
+
+不构建 ARMv6、ARMv5 或 32 位 x86/386。MIPS 使用者必须确认大小端与浮点 ABI。Release 资产说明列举典型型号/用途，但不替代实机测试。
 
 ## 文件索引
 
-- `README.md`：项目概述、安装、配置、启动和开发说明。
-- `VERSION`：当前发布版本，版本升级时需与发布 tag 对齐。
-- `cmd/wanipv4-watcher/main.go`：Go 主程序。
-- `cmd/wanipv4-watcher/main_test.go`：公共 IPv4 分类、出口地址共识、默认路由解析测试。
-- `config.example.json`：不含实际凭证的配置模板。
-- `docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md`：精简版 Padavan 网页启动代码；只填写邮件变量，启动器与二进制由 GitHub 托管。
-- `scripts/install-padavan.sh`：旧版 SSH 安装器（兼容保留），不会覆盖现有配置或清空 `started_script.sh`。
-- `scripts/bootstrap.sh`：开机更新下载、SHA-256 校验、启动/停止/状态检查。
-- `scripts/uninstall-padavan.sh`：删除由本工具添加的开机钩子，保留邮箱配置。
-- `docs/PADAVAN-INSTALL-CN.md`：实机安装和卸载步骤。
-- `docs/TROUBLESHOOTING-CN.md`：下载、配置、SMTP、地址判断排错。
-- `DEVELOPMENT-LOG-CN.md`：累计开发与验证记录。
-- `CHANGELOG.md`：完整中文版本更新记录。
-- `docs/releases/v版本号-CN.md`：正式 Release 页面使用的中文版本说明。
-- `.github/workflows/build.yml`：自动测试、交叉编译、校验和、中文构建报告与 Release。
-- `WANIPv4-Watcher-BUILD-REPORT-CN-v版本号.md`：由 CI 生成的版本化构建报告（在每次 Actions 构建产物/Release 中）。
+- README.md：通用手动部署、架构选择与系统专用安装入口。
+- VERSION：版本号，必须与创建 Release 的 v* 标签一致。
+- cmd/wanipv4-watcher/main.go：监控、公网检测、调度与 SMTP 告警。
+- cmd/wanipv4-watcher/main_test.go：地址分类、出口地址共识、默认路由和调度测试。
+- config.example.json：不含实际凭证的配置模板。
+- scripts/install-padavan.sh、scripts/bootstrap.sh、scripts/uninstall-padavan.sh：Padavan 安装和运行管理。
+- scripts/install-merlin.sh、scripts/bootstrap-merlin.sh、scripts/uninstall-merlin.sh：ASUSWRT-Merlin 安装、运行管理和卸载。
+- docs/MERLIN-INSTALL-CN.md：梅林安装、升级、诊断与卸载中文指南。
+- docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md、docs/PADAVAN-INSTALL-CN.md：Padavan 中文指南。
+- docs/TROUBLESHOOTING-CN.md：通用故障排查。
+- DEVELOPMENT-LOG-CN.md：累计开发日志。
+- .github/workflows/build.yml：单元测试、静态检查、Shell 语法检查、多架构编译、校验和、Release 和资产说明。
 
-## 部署关键点
+## ASUSWRT-Merlin 运行路径
 
-- 推荐网页启动方式的配置路径：`/tmp/wanipv4-watcher.json`（每次开机重新生成）。
-- 旧版 SSH 安装方式的配置路径：`/etc/storage/wanipv4-watcher.json`。
-- 持久化启动入口：`/etc/storage/started_script.sh`。
-- 程序路径：`/tmp/wanipv4-watcher`。
-- 日志路径：`/tmp/wanipv4-watcher.log`、`/tmp/wanipv4-watcher-bootstrap.log`。
-- 默认下载资产：Release 中的 `wanipv4-watcher-linux-mipsle-softfloat`，必须通过 `checksums.txt` 校验才执行。
-- SMTP：`smtp.qq.com:465`，使用 QQ 邮箱授权码；任何真实邮箱凭证都不得提交到仓库。
+- 永久配置：/jffs/configs/wanipv4-watcher.json（权限 600）。
+- 管理器：/jffs/scripts/wanipv4-watcher。
+- 自动启动入口：/jffs/scripts/services-start 中本工具标记区块。
+- 运行时二进制：/tmp/wanipv4-watcher（每次启动从最新 Release 下载并校验）。
+- 日志：/tmp/wanipv4-watcher.log 与 /tmp/wanipv4-watcher-bootstrap.log。
+- 管理器命令：start、stop、restart、update、status、check-config、once、test-email、logs。
 
-## 当前状态
+## 验证边界
 
-默认调度为路由器本地时间每天 07:00 和 19:00 各检查一次，程序启动时不额外检测。公网检测固定使用 IPIP、3322、CIP.cc、IP9 四个来源；旧配置里的海外检测 URL 会被运行时替换掉。WAN IP 分类按完整 CIDR 检查，100.64.0.0/10 覆盖 100.64.0.0–100.127.255.255，所以 100.71.x.x 会被识别为 CGNAT；日志及邮件包含命中类别说明。Padavan 启动文本只需写三项邮箱变量并调用 GitHub 上的 `scripts/bootstrap.sh`；该脚本自动生成 RAM 配置、下载/校验 Go 二进制、设置可执行权限并启动。真实 K2P WAN 接口、系统时区和 QQ SMTP 仍需实机验证。
+GitHub Actions 负责自动单元测试、Go vet、Shell 语法检查和架构交叉编译。成功的 CI 只证明构建流程通过，不表示所有型号都已实机验证。RT-AC86U 当前已确认 uname -m 返回 aarch64，并且当前默认路由优先接口为 ppp0；安装后仍应在设备上验证启动、四个检测源可达性和 SMTP 投递。

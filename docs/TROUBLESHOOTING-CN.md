@@ -1,45 +1,49 @@
 # 排错指南
 
-## 1. `not running` 或开机后没有进程
+## 1. not running 或重启后没有进程
 
-先查看启动诊断：
+不同系统查看不同的启动诊断：
 
-```sh
-tail -n 100 /tmp/wanipv4-watcher-bootstrap.log
-```
+- Padavan：tail -n 100 /tmp/wanipv4-watcher-bootstrap.log
+- ASUSWRT-Merlin：/jffs/scripts/wanipv4-watcher logs
 
-可能原因包括：路由器开机时暂时无法访问 GitHub、二进制下载失败、SHA-256 校验工具不存在，或 SMTP 配置模板还没修改。可配置完成后手动重新运行 bootstrap。
+梅林启动失败时，确认 JFFS 自定义脚本已启用；网络恢复后可运行 /jffs/scripts/wanipv4-watcher start 重新尝试。
 
 ## 2. 配置检查失败
 
-```sh
-/tmp/wanipv4-watcher -config /tmp/wanipv4-watcher.json -check-config
-```
+使用实际配置路径执行：
 
-检查 JSON 逗号、引号是否正确，以及 `smtp.username`、`smtp.password`、`smtp.from`、`smtp.to` 是否已修改。邮箱密码必须是授权码。`external_ip_urls` 至少需要两个 URL。
+~~~sh
+/tmp/wanipv4-watcher -config /path/to/wanipv4-watcher.json -check-config
+~~~
+
+检查 JSON 格式与 smtp.username、smtp.password、smtp.from、smtp.to。邮件密码必须是 QQ 邮箱 SMTP 授权码。梅林配置位于 /jffs/configs/wanipv4-watcher.json；Padavan 网页启动方式默认将运行配置生成在 /tmp/wanipv4-watcher.json。
 
 ## 3. 邮件发送失败
 
-用测试模式查看 SMTP 返回的错误：
+~~~sh
+/tmp/wanipv4-watcher -config /path/to/wanipv4-watcher.json -test-email
+~~~
 
-```sh
-/tmp/wanipv4-watcher -config /tmp/wanipv4-watcher.json -test-email
-```
+确认 QQ 邮箱已开启 SMTP、授权码正确、路由器可以访问 smtp.qq.com:465，并检查系统时间。该命令只验证邮件链路，不会把授权码写入日志。
 
-确认 QQ 邮箱 SMTP 已开启、授权码正确、465 端口可连接，以及系统时间基本准确。程序不会把授权码写进日志。发送失败的告警会在后续监控周期重试。
+## 4. 检测时间不符合预期
 
-## 4. 检查时间不符合预期
+默认每天按路由器本地时间 07:00 和 19:00 检查。运行 date 确认系统时间及时区正确。进程启动时不会立即额外检测；使用 -once 可手动触发一轮真实检测。
 
-默认只在路由器本地时间每天 `07:00` 和 `19:00` 检查。先运行 `date` 确认 Padavan 的系统时间和时区正确；配置里的 `check_times` 可以设置其他 `HH:MM` 时间。旧版配置没有 `check_times` 时会自动使用默认两个时间。
+## 5. 反复出现 unknown
 
-## 5. 反复出现 `unknown`
+程序固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 检测源，至少两个必须返回相同、有效的公网 IPv4。查看 /tmp/wanipv4-watcher.log 中各 provider 的错误。3322 接口使用 HTTP，其他来源使用 HTTPS。结果不足或投票打平时，本轮不会猜测出口 IP。
 
-固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 查询源，至少两个必须返回相同、有效的公网 IPv4。检查路由器 DNS/HTTPS 连通性（3322 接口使用 HTTP），以及 `/tmp/wanipv4-watcher.log` 中各 provider 的错误。IPIP/CIP 返回说明文本、IP9 返回 JSON，程序会自动解析；旧版配置残留的海外 URL 会被加载时替换。
+## 6. 检测的 WAN 网卡不对
 
-## 6. 检测到的 WAN 网卡不对
+wan_interface: auto 会根据 /proc/net/route 的活动默认路由按 metric 选接口。如果设备使用 VPN、多 WAN、策略路由或同时存在多条默认路由，应明确设置实际 WAN 接口。
 
-`wan_interface: "auto"` 使用 `/proc/net/route` 中活动默认 IPv4 路由的接口。如果运行了 VPN、多 WAN 或策略路由，默认路由未必代表物理 WAN。先查看 `cat /proc/net/route`、`ip -4 addr`，然后把 `wan_interface` 改成物理 WAN/PPPoE 接口名称。
+- 梅林查看 ip -4 route；PPPoE 当前通常显示为 ppp0。
+- Padavan 查看 cat /proc/net/route 以及 ip -4 addr 或 ifconfig。
 
-## 7. 收到 `private_wan` 告警
+不要仅根据 LAN 子网或路由器型号猜测 WAN 接口。
 
-检查邮件中的 WAN IPv4 和公网出口 IPv4。如果 WAN 是 `10.x.x.x`、`172.16.x.x`–`172.31.x.x`、`192.168.x.x` 或 `100.64.0.0/10`，通常表示路由器 WAN 口拿到的是私网/运营商共享地址。特别注意：`100.64.0.0/10` 覆盖完整范围 `100.64.0.0` 到 `100.127.255.255`，因此你当前的 `100.71.x.x` 明确属于 CGNAT；不是只检查 `100.64.x.x`。程序会在告警详情中写出具体命中原因。如果使用光猫路由模式或其他上游 NAT，也会出现这种情况。单凭该地址不能证明是运营商有意修改套餐或配置。
+## 7. 收到 private_wan 告警
+
+RFC1918 地址（10.0.0.0/8、172.16.0.0/12、192.168.0.0/16）和 100.64.0.0/10 运营商共享地址不能作为普通公网 WAN IPv4 使用。100.64.0.0/10 的完整范围为 100.64.0.0 到 100.127.255.255；地址落在其中时，诊断会说明 CGNAT 原因。上游 NAT、光猫路由模式也可能造成 WAN 和公网出口 IP 不一致；单凭地址信息不能证明运营商主动变更了配置。

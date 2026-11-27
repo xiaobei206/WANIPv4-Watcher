@@ -43,97 +43,134 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building WANIPv4-Watcher v$VERSION"
 
-      - name: Check Chinese release notes
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.meta.outputs.version }}"
-          NOTES_FILE="docs/releases/v${VERSION}-CN.md"
-          if [[ ! -s "$NOTES_FILE" ]]; then
-            echo "::error::缺少中文发布说明文件：$NOTES_FILE。请先补全该版本的中文变更、测试结果和已知限制，再发布。"
-            exit 1
-          fi
-          echo "Chinese release notes verified: $NOTES_FILE"
-
-      - name: Test
+      - name: Unit tests
         run: go test ./...
 
-      - name: Vet
+      - name: Static analysis
         run: go vet ./...
 
       - name: Check shell script syntax
         shell: bash
         run: |
           set -euo pipefail
-          sh -n scripts/bootstrap.sh
-          sh -n scripts/install-padavan.sh
-          sh -n scripts/uninstall-padavan.sh
+          for script in scripts/*.sh; do
+            echo "Checking $script"
+            sh -n "$script"
+          done
 
-      - name: Build Linux MIPSLE soft-float for Padavan
+      - name: Prepare output directory
+        run: mkdir -p dist
+
+      - name: Build Linux ARM64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-arm64 ./cmd/wanipv4-watcher
+
+      - name: Build Linux ARMv7 hard-float
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: '7'
+          CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-armv7 ./cmd/wanipv4-watcher
+
+      - name: Build Linux AMD64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-amd64 ./cmd/wanipv4-watcher
+
+      - name: Build Linux MIPS little-endian soft-float
         env:
           GOOS: linux
           GOARCH: mipsle
           GOMIPS: softfloat
           CGO_ENABLED: '0'
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          go build -trimpath -buildvcs=false \
-            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \
-            -o dist/wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
-          cp dist/wanipv4-watcher-linux-mipsle-softfloat \
-            "dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mipsle-softfloat"
-          file dist/wanipv4-watcher-linux-mipsle-softfloat
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mipsle-softfloat ./cmd/wanipv4-watcher
 
-      - name: Build Linux AMD64 diagnostic binary
+      - name: Build Linux MIPS little-endian hard-float
         env:
           GOOS: linux
-          GOARCH: amd64
+          GOARCH: mipsle
+          GOMIPS: hardfloat
           CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mipsle-hardfloat ./cmd/wanipv4-watcher
+
+      - name: Build Linux MIPS big-endian soft-float
+        env:
+          GOOS: linux
+          GOARCH: mips
+          GOMIPS: softfloat
+          CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mips-softfloat ./cmd/wanipv4-watcher
+
+      - name: Build Linux MIPS big-endian hard-float
+        env:
+          GOOS: linux
+          GOARCH: mips
+          GOMIPS: hardfloat
+          CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-mips-hardfloat ./cmd/wanipv4-watcher
+
+      - name: Build Linux RISC-V 64-bit
+        env:
+          GOOS: linux
+          GOARCH: riscv64
+          CGO_ENABLED: '0'
+        run: go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" -o dist/wanipv4-watcher-linux-riscv64 ./cmd/wanipv4-watcher
+
+      - name: Verify binary formats
         run: |
           set -euo pipefail
-          go build -trimpath -buildvcs=false \
-            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \
-            -o dist/wanipv4-watcher-linux-amd64 ./cmd/wanipv4-watcher
-          cp dist/wanipv4-watcher-linux-amd64 \
-            "dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-amd64"
+          file dist/wanipv4-watcher-linux-*
 
-      - name: Package source and checksums
+      - name: Package source, build report and checksums
         env:
           VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
         run: |
           set -euo pipefail
           git archive --format=tar.gz \
-            --prefix="WANIPv4-Watcher-v${VERSION}/" HEAD \
-            -o "dist/WANIPv4-Watcher-v${VERSION}-source.tar.gz"
-          cat > "dist/WANIPv4-Watcher-BUILD-REPORT-CN-v${VERSION}.md" <<REPORT
-          # WANIPv4-Watcher v${VERSION} 构建报告
+            --prefix="WANIPv4-Watcher-v$VERSION/" HEAD \
+            -o "dist/WANIPv4-Watcher-v$VERSION-source.tar.gz"
+          cat > "dist/WANIPv4-Watcher-BUILD-REPORT-CN-v$VERSION.md" <<REPORT
+          # WANIPv4-Watcher v$VERSION 构建报告
 
-          - 构建提交：`${GITHUB_SHA}`
-          - 工作流触发：`${GITHUB_EVENT_NAME}` / `${GITHUB_REF}`
-          - Go 版本：`$(go version)`
-          - 单元测试：通过（`go test ./...`）
-          - 静态检查：通过（`go vet ./...`）
-          - Padavan 主目标：`linux/mipsle`，`GOMIPS=softfloat`，`CGO_ENABLED=0`
-          - 诊断目标：`linux/amd64`，`CGO_ENABLED=0`
-          - 链接方式：纯 Go 静态链接，不依赖路由器上的 libc/OpenSSL 动态库
-          - SHA-256 清单：`checksums.txt`
+          - 构建提交：$GITHUB_SHA
+          - 触发方式：$GITHUB_EVENT_NAME / $GITHUB_REF
+          - Go 版本：$(go version)
+          - 单元测试：通过（go test ./...）
+          - 静态检查：通过（go vet ./...）
+          - Shell 脚本语法检查：通过（scripts/*.sh）
+          - linux/arm64：ARM64 / AArch64
+          - linux/arm（GOARM=7）：32 位 ARMv7
+          - linux/amd64：x86-64
+          - linux/mipsle：soft-float 与 hard-float
+          - linux/mips：soft-float 与 hard-float
+          - linux/riscv64：64 位 RISC-V
+          - 所有目标均设置 CGO_ENABLED=0，不依赖路由器上的 libc/OpenSSL 动态链接。
 
-          说明：此报告来自 GitHub Actions 构建流程。MIPSLE 交叉编译成功不等于已经在真实 K2P Padavan 路由器上完成运行测试；实际 WAN 接口和 QQ SMTP 仍需设备侧验证。
+          构建与自动测试成功不等于所有设备均已实机验证。选择 MIPS 浮点 ABI 时必须与固件用户态匹配；梅林安装器针对 ARM64/AArch64 目标。具体型号支持情况请查看 Release 资产说明和中文文档。
           REPORT
           cd dist
           sha256sum \
-            wanipv4-watcher-linux-mipsle-softfloat \
-            "WANIPv4-Watcher-v${VERSION}-linux-mipsle-softfloat" \
+            wanipv4-watcher-linux-arm64 \
+            wanipv4-watcher-linux-armv7 \
             wanipv4-watcher-linux-amd64 \
-            "WANIPv4-Watcher-v${VERSION}-linux-amd64" \
-            "WANIPv4-Watcher-v${VERSION}-source.tar.gz" \
-            "WANIPv4-Watcher-BUILD-REPORT-CN-v${VERSION}.md" \
+            wanipv4-watcher-linux-mipsle-softfloat \
+            wanipv4-watcher-linux-mipsle-hardfloat \
+            wanipv4-watcher-linux-mips-softfloat \
+            wanipv4-watcher-linux-mips-hardfloat \
+            wanipv4-watcher-linux-riscv64 \
+            "WANIPv4-Watcher-v$VERSION-source.tar.gz" \
+            "WANIPv4-Watcher-BUILD-REPORT-CN-v$VERSION.md" \
             > checksums.txt
-          cp checksums.txt "WANIPv4-Watcher-v${VERSION}-checksums.txt"
           cat checksums.txt
 
-      - name: Upload build artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: WANIPv4-Watcher-${{ steps.meta.outputs.version }}
@@ -162,7 +199,7 @@ jobs:
           VERSION="$(tr -d '[:space:]' < VERSION)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Download build files
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: WANIPv4-Watcher-${{ steps.meta.outputs.version }}
@@ -181,36 +218,82 @@ jobs:
             fi
             echo "do_publish=true" >> "$GITHUB_OUTPUT"
           elif git ls-remote --exit-code --refs origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            NOTES_FILE="docs/releases/v${VERSION}-CN.md"
-            if [[ -f "$NOTES_FILE" ]] && git diff --name-only "${GITHUB_SHA}^" "$GITHUB_SHA" | grep -Fxq "$NOTES_FILE"; then
-              echo "Chinese release notes changed; updating the existing Release v$VERSION."
-              echo "do_publish=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "Release v$VERSION already exists; this commit does not update its Chinese release notes."
-              echo "do_publish=false" >> "$GITHUB_OUTPUT"
-            fi
+            echo "Release v$VERSION already exists; main-branch build will not overwrite it."
+            echo "do_publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "No v$VERSION tag exists yet; publishing the initial version from this commit."
+            echo "No v$VERSION tag exists yet; publishing this tested commit."
             echo "do_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create or update release assets
+      - name: Create release with architecture assets
+        id: publish-release
         if: steps.publish.outputs.do_publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
           name: WANIPv4-Watcher v${{ steps.meta.outputs.version }}
           generate_release_notes: false
-          body_path: docs/releases/v${{ steps.meta.outputs.version }}-CN.md
           make_latest: true
           overwrite_files: true
+          fail_on_unmatched_files: true
+          preserve_order: true
+          body: |
+            ## WANIPv4-Watcher v${{ steps.meta.outputs.version }}
+
+            ### 本版内容
+            - 增加 ARM64/AArch64、ARMv7、x86-64、MIPS 不同大小端/浮点 ABI，以及 RISC-V 64-bit 编译产物。
+            - 新增梅林 RT-AC86U 等 ARM64 设备的安装器与中文安装文档。
+            - 保留 K2P/Padavan 的 MIPSLE soft-float 稳定下载文件名和原有安装入口。
+            - 提供通用 Linux 手动部署说明、SHA-256 清单和自动构建报告。
+
+            ### 选择文件
+            请按资产文件名选择架构。右侧资产说明列列出典型设备/用途；MIPS 用户尤其要确认大小端与 soft-float/hard-float ABI。ARMv6、ARMv5 和 32 位 x86（386）不在本版构建范围。
+
+            ### 验证范围
+            GitHub Actions 执行 Go 单元测试、go vet、Shell 脚本语法检查以及全部列出架构的交叉编译。CI 通过不代表每一种路由器都完成实机验证；请以文档中的验证说明为准。
           files: |
-            dist/wanipv4-watcher-linux-mipsle-softfloat
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-mipsle-softfloat
+            dist/wanipv4-watcher-linux-arm64
+            dist/wanipv4-watcher-linux-armv7
             dist/wanipv4-watcher-linux-amd64
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-linux-amd64
+            dist/wanipv4-watcher-linux-mipsle-softfloat
+            dist/wanipv4-watcher-linux-mipsle-hardfloat
+            dist/wanipv4-watcher-linux-mips-softfloat
+            dist/wanipv4-watcher-linux-mips-hardfloat
+            dist/wanipv4-watcher-linux-riscv64
             dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-source.tar.gz
             dist/WANIPv4-Watcher-BUILD-REPORT-CN-v${{ steps.meta.outputs.version }}.md
-            dist/WANIPv4-Watcher-v${{ steps.meta.outputs.version }}-checksums.txt
             dist/checksums.txt
+
+      - name: Add descriptions to Release assets
+        if: steps.publish.outputs.do_publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$VERSION" --jq '.id')"
+          label_asset() {
+            local asset_name="$1"
+            local asset_label="$2"
+            local asset_id
+            asset_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" --jq ".[] | select(.name == \"$asset_name\") | .id" | head -n 1)"
+            if [[ -z "$asset_id" ]]; then
+              echo "Missing release asset: $asset_name" >&2
+              exit 1
+            fi
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              -f name="$asset_name" -f label="$asset_label" >/dev/null
+          }
+          label_asset "wanipv4-watcher-linux-arm64" "ARM64/AArch64；ASUS RT-AC86U（梅林）、Xiaomi AX3000T RD03/RD23（OpenWrt）等"
+          label_asset "wanipv4-watcher-linux-armv7" "ARMv7 32-bit；Netgear R7800、Linksys WRT1900ACS 等（核对固件 ABI）"
+          label_asset "wanipv4-watcher-linux-amd64" "x86-64；OpenWrt/iStoreOS x86 软路由、迷你主机软路由"
+          label_asset "wanipv4-watcher-linux-mipsle-softfloat" "MIPS 小端 soft-float；K2P / Padavan 专用目标"
+          label_asset "wanipv4-watcher-linux-mipsle-hardfloat" "MIPS 小端 hard-float；仅适用匹配硬浮点 ABI 的固件"
+          label_asset "wanipv4-watcher-linux-mips-softfloat" "MIPS 大端 soft-float；部分旧款 Atheros 路由器，需核对 ABI"
+          label_asset "wanipv4-watcher-linux-mips-hardfloat" "MIPS 大端 hard-float；少量对应 ABI 设备，需核对 ABI"
+          label_asset "wanipv4-watcher-linux-riscv64" "RISC-V 64-bit Linux 设备/开发板；消费级路由器较少，实机待验证"
+          label_asset "WANIPv4-Watcher-v$VERSION-source.tar.gz" "源代码包（与此 Release 版本对应）"
+          label_asset "WANIPv4-Watcher-BUILD-REPORT-CN-v$VERSION.md" "自动化测试、架构编译与校验说明；非全型号实机报告"
+          label_asset "checksums.txt" "本 Release 所有二进制、源代码包和构建报告的 SHA-256 校验清单"
