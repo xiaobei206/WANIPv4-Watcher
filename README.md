@@ -4,7 +4,7 @@
 
 程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，每次检测都会通过 QQ 邮件发送结果；正常、告警和未知结果分别标记，支持设备昵称 TAG 与备注，异常/未知邮件带高优先级标记。
 
-版本说明与完整历史：[v0.3.3](docs/releases/v0.3.3-CN.md) · [v0.3.2](docs/releases/v0.3.2-CN.md) · [v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md) · [v0.2.1](docs/releases/v0.2.1-CN.md) · [v0.2.2](docs/releases/v0.2.2-CN.md) · [v0.3.0](docs/releases/v0.3.0-CN.md) · [v0.3.1](docs/releases/v0.3.1-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
+固定资产名与芯片/路由器对照：[docs/ROUTER-ARCHITECTURE-MAP-CN.md](docs/ROUTER-ARCHITECTURE-MAP-CN.md)。版本说明与完整历史：[v0.3.3](docs/releases/v0.3.3-CN.md) · [v0.3.2](docs/releases/v0.3.2-CN.md) · [v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md) · [v0.2.1](docs/releases/v0.2.1-CN.md) · [v0.2.2](docs/releases/v0.2.2-CN.md) · [v0.3.0](docs/releases/v0.3.0-CN.md) · [v0.3.1](docs/releases/v0.3.1-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
 
 - 默认每天按路由器本地时间 **07:00、19:00** 检查各一次；每轮检测结束都会发送一封邮件，启动时不会额外检查。
 - 至少两个外部检测源返回相同的有效公网 IPv4 才形成结论；结果不足或冲突时报告 **unknown**，不猜测结论，但仍发送高优先级“未知”通知。
@@ -17,20 +17,40 @@
 
 这套方法适合会使用 SSH 和 Linux 命令的路由器/软路由用户。**先选择与设备完全匹配的二进制，再配置邮件；开机自启放在下面的“系统专用安装”章节。**
 
-### 选择正确的架构文件
+## 固定资产名与架构对照
 
-| Release 文件名 | 常见设备/用途示例 | 选择时注意 |
-|---|---|---|
-| **wanipv4-watcher-linux-arm64** | ASUS RT-AC86U（梅林，aarch64）；Xiaomi AX3000T RD03/RD23 等 ARM64 OpenWrt 设备 | RT-AC86U 目标架构已由设备输出确认；仍需核对硬件版本和固件 |
-| **wanipv4-watcher-linux-armv7** | Netgear R7800、Linksys WRT1900ACS 等 ARMv7 路由器 | 32 位 ARMv7，固件 ABI 必须兼容 |
-| **wanipv4-watcher-linux-amd64** | OpenWrt/iStoreOS x86-64 软路由、迷你主机 | 适用于 64 位 x86 Linux，不是 ARM64 |
-| **wanipv4-watcher-linux-mipsle-softfloat** | K2P / Padavan | 现有 K2P 目标；小端 MIPS 软浮点 |
-| **wanipv4-watcher-linux-mipsle-hardfloat** | 使用小端 MIPS 硬浮点用户态的设备 | 必须确认固件 ABI，不能与 soft-float 混用 |
-| **wanipv4-watcher-linux-mips-softfloat** | 部分大端 MIPS/Atheros 路由器 | 大端 MIPS 软浮点，需核对 ABI |
-| **wanipv4-watcher-linux-mips-hardfloat** | 少量匹配大端 MIPS 硬浮点 ABI 的设备 | 需核对 CPU、大小端和用户态 ABI |
-| **wanipv4-watcher-linux-riscv64** | 64 位 RISC-V Linux 设备/开发板 | 编译目标已提供，消费级路由器实机覆盖较少 |
+本项目的架构二进制使用**固定资产名**，版本号由 GitHub Release 标签区分，不在二进制资产名中追加版本号。下载前先确认 Linux CPU 指令集、位数、大小端和浮点 ABI，再对照芯片与具体硬件版本。
 
-Release 中每种架构只提供一个固定文件名（`wanipv4-watcher-linux-架构`）；版本号只体现在 Release 标题、说明和对应源码/构建报告中。安装脚本始终通过 `/releases/latest/download/` 下载固定资产名，不需要随版本改动。型号示例不是对所有硬件修订版或所有固件的兼容保证。**本项目不编译过旧的 ARMv6、ARMv5，也不编译 32 位 x86（386）。**
+| 固定资产名 | 编译目标 / ABI | 芯片平台（芯片在前） | 常见路由器 / 设备型号举例 |
+|---|---|---|---|
+| `wanipv4-watcher-linux-arm64` | Linux ARM64 / AArch64 | Qualcomm **IPQ6000、IPQ6018、IPQ6010、IPQ5018、IPQ8071A、IPQ8072A**；MediaTek **MT7622B、MT7981B、MT7986A、MT7988A**；Broadcom **BCM4906、BCM4908、BCM4912**；Rockchip **RK3328、RK3399、RK3568、RK3588S** | **IPQ6000**：小米 AX1800、GL.iNet GL-AX1800 v1；**IPQ6018**：Redmi AX5、GL-AX1800 v2；**IPQ6010**：NETGEAR WAX214 v1（无线 AP）；**IPQ5018**：小米 AIoT Router AX6000；**IPQ8071A**：小米 AX3600、Redmi AX6；**IPQ8072A**：小米 AX9000；**MT7622B**：小米 AX3200、Linksys E8450 / Belkin RT3200、NETGEAR WAX206（AP）；**MT7981B**：小米 AX3000T RD03/RD23、GL.iNet Beryl AX（GL-MT3000）、Cudy WR3000；**MT7986A**：Redmi AX6000、ASUS TUF-AX6000、GL.iNet Flint 2（GL-MT6000）、Banana Pi BPI-R3；**MT7988A**：Banana Pi BPI-R4；**BCM4906**：ASUS RT-AC86U、RT-AX68U；**BCM4908**：ASUS RT-AX88U、RT-AX86U；**BCM4912**：ASUS GT-AX6000、RT-AX88U Pro；**Rockchip**：Orange Pi R1 Plus LTS、NanoPi R4S / R5S / R6S |
+| `wanipv4-watcher-linux-armv7` | Linux ARM 32 位 / ARMv7（GOARM=7） | Broadcom **BCM4708、BCM47081、BCM4709、BCM6750、BCM6755**；Qualcomm **IPQ4018、IPQ4019、IPQ8064、IPQ8065**；Marvell **Armada XP、Armada 385 / 88F6820** | **BCM4708/4709**：ASUS RT-AC56U、RT-AC68U、RT-AC87U；NETGEAR R7000、R6250、R6300v2、R8000；TP-Link Archer C9 v1；Linksys EA6300 v1、EA6500 v2；**BCM6750/6755**：ASUS TUF-AX3000、TUF-AX5400、RT-AX58U、RT-AX82U；**IPQ8064/8065**：NETGEAR R7500、R7800，TP-Link Archer C2600，Linksys EA8500；**IPQ4018/4019**：Linksys Velop WHW03、NETGEAR Orbi RBR50；**Armada 385**：Linksys WRT1900ACS、WRT3200ACM |
+| `wanipv4-watcher-linux-amd64` | Linux x86-64 / AMD64 | Intel、AMD 64 位桌面 / 移动 / 嵌入式 x86 CPU；例如 Intel Atom、Celeron、N 系列、Core，以及 AMD GX 系列 | OpenWrt / iStoreOS x86-64 软路由；PC Engines apu2（AMD GX-412TC）；Protectli Vault；Qotom；Topton N100 / N 系列软路由小主机及其他 Intel / AMD 迷你主机 |
+| `wanipv4-watcher-linux-mipsle-softfloat` | Linux MIPS 32 位 / 小端 / soft-float | MediaTek **MT7620A、MT7628AN、MT7621A、MT7621AT**；旧款 Ralink **RT305x / RT5350** | **MT7621A/AT**：斐讯 K2P A1/A2、Newifi D2、小米路由器 3G / R3G、小米 / Redmi AC2100、TP-Link Archer C6 v2、NETGEAR R6220；**MT7620A**：TP-Link Archer C2 v1、Archer C20 v1、Archer C50 v1、极路由 HC5661；**MT7628AN**：小米路由器 4C / R4AC；**RT305x**：D-Link DIR-300 B1 等老款设备 |
+| `wanipv4-watcher-linux-mipsle-hardfloat` | Linux MIPS 32 位 / 小端 / hard-float ABI | 小端 MIPS hard-float 用户态；必须按设备固件实际 ELF ABI 判定，不能仅凭 SoC 型号或“带 FPU”推断 | **目前不列主流家用路由器型号**。常见 MT7620 / MT7621 Padavan、OpenWrt 设备通常应优先核对 soft-float 目标；不要把本文件当作 MIPSLE 通用版 |
+| `wanipv4-watcher-linux-mips-softfloat` | Linux MIPS 32 位 / 大端 / soft-float | Qualcomm Atheros **AR7161、AR9132、AR9344、QCA9533、QCA9558、QCA9563**；Broadcom **BCM4718 / BCM4706** 等老款 MIPS 平台 | **AR9344 / QCA9558 / QCA9563**：TP-Link TL-WDR4300、TL-WDR3600、TL-WDR3500、Archer C7 v1–v5、TL-WR1043ND v2/v3；NETGEAR WNDR4300 v1、WNDR3700 v4；**AR7161**：NETGEAR WNDR3700 v1/v2、WNDR3800；**Broadcom BCM4718**：NETGEAR WNDR3700 v3、WNDR4000，ASUS RT-N16 |
+| `wanipv4-watcher-linux-mips-hardfloat` | Linux MIPS 32 位 / 大端 / hard-float ABI | 大端 MIPS hard-float 用户态；必须按设备固件实际 ELF ABI 判定 | **目前不列主流家用路由器型号**。常见 Atheros ath79 / Broadcom 老款路由器通常对应 soft-float 路径；不可因为 CPU 是 MIPS 就选择 hard-float |
+| `wanipv4-watcher-linux-riscv64` | Linux RISC-V 64 位 | 64 位 RISC-V Linux CPU / SoC 平台 | 暂无适合列为主流家用路由器的型号；主要面向 RISC-V Linux 开发板、嵌入式设备和自建网关。开发板示例：StarFive VisionFive 2、Banana Pi BPI-F3、Milk-V Jupiter（不是家用路由器型号） |
+
+### 型号与 ABI 注意事项
+
+- 表中型号用于快速定位芯片平台，**不表示该型号所有硬件版本、所有地区版或原厂固件都经过 WANIPv4-Watcher 实机验证**。同一商品名可能跨硬件版本更换 SoC，必须核对设备标签、硬件版本及系统信息。
+- 特别注意：小米 AX3000T 的 RD03 / RD23 是 MediaTek MT7981B；新款 RD03v2 使用不同的 Qualcomm 硬件，不能直接套用 MT7981B 这一行。
+- **MIPS 的大小端与浮点 ABI 是两个独立条件**：`mipsle` 与 `mips` 不能互换；`softfloat` 与 `hardfloat` 也不能互换。请以路由器当前 Linux 固件的实际 ELF / 软件包架构为准，不要只按品牌、商品名或 CPU 系列选择。
+- 默认原厂固件若不是 Linux（例如专有 RouterOS），即使 CPU 芯片相同，也不能直接运行本项目的 Linux 二进制；需要设备运行兼容的 Linux 固件/环境。
+- 早期 Release 的资产集和命名曾随项目演进而变化；本表统一说明当前稳定资产名。**新安装请从最新 Release 下载**，不要假设早期历史 Release 一定包含表内全部文件。
+- 项目不编译 ARMv5、ARMv6 或 32 位 x86（386）。所有构建使用 `CGO_ENABLED=0`；CI 交叉编译通过不等于每个列举型号均已实机验证。
+
+### 硬件资料参考
+
+- [OpenWrt Table of Hardware](https://openwrt.org/toh/views/toh_gluon_supported)
+- [OpenWrt：TP-Link Archer C7（不同硬件版本的 QCA9558 / QCA9563）](https://openwrt.org/toh/tp-link/archer_c7)
+- [OpenWrt：TP-Link TL-WDR4300（AR9344）](https://openwrt.org/toh/tp-link/tl-wdr4300)
+- [OpenWrt：Xiaomi AX3000T（RD03 / RD23 的 MT7981B 与 RD03v2 硬件差异）](https://openwrt.org/toh/xiaomi/ax3000t)
+- [OpenWrt：NETGEAR WAX214（IPQ6010，无线 AP）](https://openwrt.org/toh/hwdata/netgear/netgear_wax214)
+- [Xiaomi 官方：Mi Router AX1800（IPQ6000）](https://www.mi.com/global/product/mi-aiot-router-ax1800/specs/)
+- [GL.iNet 官方：GL-AX1800（IPQ6000）](https://www.gl-inet.com/products/gl-ax1800/)
+- [Linux 内核：Broadcom BCM4708 / BCM4709 设备树绑定](https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/arm/bcm/brcm%2Cbcm4708.yaml)
 
 ### 下载并校验 SHA-256
 

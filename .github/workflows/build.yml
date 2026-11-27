@@ -49,8 +49,17 @@ jobs:
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
           NOTES_FILE="docs/releases/v${VERSION}-CN.md"
+          ARCH_MAP="docs/ROUTER-ARCHITECTURE-MAP-CN.md"
+          if [[ ! -s "$ARCH_MAP" ]] || ! grep -Fq "## 固定资产名与架构对照" "$ARCH_MAP"; then
+            echo "::error::缺少统一架构资产对照表：$ARCH_MAP"
+            exit 1
+          fi
           if [[ ! -s "$NOTES_FILE" ]]; then
             echo "::error::缺少中文发布说明：$NOTES_FILE"
+            exit 1
+          fi
+          if ! grep -Fq "## 固定资产名与架构对照" "$NOTES_FILE"; then
+            echo "::error::当前版本发布说明缺少固定资产名与架构对照表：$NOTES_FILE"
             exit 1
           fi
           while IFS= read -r TAG; do
@@ -59,6 +68,10 @@ jobs:
             TAG_NOTES="docs/releases/v${TAG_VERSION}-CN.md"
             if [[ ! -s "$TAG_NOTES" ]]; then
               echo "::error::已存在版本标签 $TAG，但缺少中文发布说明 $TAG_NOTES"
+              exit 1
+            fi
+            if ! grep -Fq "## 固定资产名与架构对照" "$TAG_NOTES"; then
+              echo "::error::历史版本发布说明缺少固定资产名与架构对照表：$TAG_NOTES"
               exit 1
             fi
           done < <(git tag -l 'v*' | sort -V)
@@ -173,8 +186,9 @@ jobs:
           - linux/riscv64：64 位 RISC-V
           - 所有目标均设置 CGO_ENABLED=0，不依赖路由器上的 libc/OpenSSL 动态链接。
 
-          构建与自动测试成功不等于所有设备均已实机验证。选择 MIPS 浮点 ABI 时必须与固件用户态匹配；梅林安装器针对 ARM64/AArch64 目标。具体型号支持情况请查看 Release 资产说明和中文文档。
+          构建与自动测试成功不等于所有设备均已实机验证。选择 MIPS 浮点 ABI 时必须与固件用户态匹配；梅林安装器针对 ARM64/AArch64 目标。下方附完整固定资产名、芯片和路由器型号对照表。
           REPORT
+          cat docs/ROUTER-ARCHITECTURE-MAP-CN.md >> "dist/WANIPv4-Watcher-BUILD-REPORT-CN-v$VERSION.md"
           # Binary filenames stay stable across releases; the Release tag carries the version.
           cd dist
           sha256sum \
