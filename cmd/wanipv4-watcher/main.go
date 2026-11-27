@@ -418,7 +418,7 @@ func observe(cfg Config) Observation {
 	// external check is still attempted to add diagnostic context to the email.
 	if cfg.AlertOnPrivateWAN && !isPublicIPv4(wanIP) {
 		obs.Status = "private_wan"
-		obs.Detail = fmt.Sprintf("WAN 地址 %s 属于私网、运营商共享或其他非公网地址段", wanIP)
+		obs.Detail = fmt.Sprintf("WAN 地址 %s 不是公网 IPv4：%s", wanIP, ipv4NonPublicReason(wanIP))
 	}
 
 	external, results := queryExternalIPv4(cfg.ExternalIPURLs, time.Duration(cfg.HTTPTimeoutSeconds)*time.Second)
@@ -437,7 +437,7 @@ func observe(cfg Config) Observation {
 	}
 	if !isPublicIPv4(wanIP) {
 		obs.Status = "private_wan"
-		obs.Detail = fmt.Sprintf("WAN 地址 %s 不是全球可路由公网 IPv4", wanIP)
+		obs.Detail = fmt.Sprintf("WAN 地址 %s 不是公网 IPv4：%s", wanIP, ipv4NonPublicReason(wanIP))
 		return obs
 	}
 	if wanIP == external {
@@ -700,27 +700,68 @@ func parseExternalIPv4(body []byte) (string, error) {
 	return value, nil
 }
 
-func isPublicIPv4(raw string) bool {
+// ipv4NonPublicReason identifies IPv4 addresses that must not be treated as
+// ordinary, globally usable public WAN addresses. The prefix checks follow the
+// IANA IPv4 Special-Purpose Address Registry, including the full RFC 6598 CGNAT
+// range rather than a single 100.64.x.x address/prefix.
+func ipv4NonPublicReason(raw string) string {
 	ip := net.ParseIP(strings.TrimSpace(raw))
 	if ip == nil || ip.To4() == nil {
-		return false
+		return "不是有效的 IPv4 地址"
 	}
-	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
-		return false
+	ip = ip.To4()
+
+	if ip.IsPrivate() {
+		return "RFC1918 私有地址段"
 	}
-	// IANA special-purpose ranges not all covered by net.IP helpers.
-	reserved := []string{
-		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24",
-		"192.88.99.0/24", "198.18.0.0/15", "198.51.100.0/24",
-		"203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
+	if ip.IsLoopback() {
+		return "回环地址段 127.0.0.0/8"
 	}
-	for _, rawPrefix := range reserved {
-		_, prefix, _ := net.ParseCIDR(rawPrefix)
+	if ip.IsLinkLocalUnicast() {
+		return "链路本地地址段 169.254.0.0/16"
+	}
+	if ip.IsMulticast() {
+		return "组播地址段 224.0.0.0/4"
+	}
+	if ip.IsUnspecified() {
+		return "未指定地址"
+	}
+
+	// IANA marks these two protocol anycast addresses inside 192.0.0.0/24
+	// as globally reachable, unlike the rest of that special-purpose block.
+	if ip.Equal(net.ParseIP("192.0.0.9")) || ip.Equal(net.ParseIP("192.0.0.10")) {
+		return ""
+	}
+
+	reserved := []struct {
+		prefix string
+		reason string
+	}{
+		{"0.0.0.0/8", "特殊用途地址段 0.0.0.0/8"},
+		{"100.64.0.0/10", "运营商共享地址段（CGNAT）100.64.0.0/10，范围为 100.64.0.0–100.127.255.255"},
+		{"192.0.0.0/24", "IETF 协议专用地址段 192.0.0.0/24"},
+		{"192.0.2.0/24", "文档示例地址段 192.0.2.0/24"},
+		{"192.88.99.0/24", "已弃用的 6to4 中继地址段 192.88.99.0/24"},
+		{"198.18.0.0/15", "网络基准测试地址段 198.18.0.0/15"},
+		{"198.51.100.0/24", "文档示例地址段 198.51.100.0/24"},
+		{"203.0.113.0/24", "文档示例地址段 203.0.113.0/24"},
+		{"240.0.0.0/4", "保留地址段 240.0.0.0/4"},
+		{"255.255.255.255/32", "有限广播地址"},
+	}
+	for _, item := range reserved {
+		_, prefix, _ := net.ParseCIDR(item.prefix)
 		if prefix.Contains(ip) {
-			return false
+			return item.reason
 		}
 	}
-	return true
+	if !ip.IsGlobalUnicast() {
+		return "不是全球单播地址"
+	}
+	return ""
+}
+
+func isPublicIPv4(raw string) bool {
+	return ipv4NonPublicReason(raw) == ""
 }
 
 func shouldAlert(cfg Config, obs Observation) bool {

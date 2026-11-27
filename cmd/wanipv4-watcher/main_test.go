@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,8 +19,14 @@ func TestIsPublicIPv4(t *testing.T) {
 		{"192.168.1.1", false},
 		{"10.0.0.1", false},
 		{"172.20.1.2", false},
+		{"100.64.0.0", false},
 		{"100.64.0.8", false},
+		{"100.71.0.1", false},
+		{"100.71.33.44", false},
 		{"100.127.255.254", false},
+		{"100.127.255.255", false},
+		{"100.63.255.255", true},
+		{"100.128.0.1", true},
 		{"169.254.1.2", false},
 		{"198.18.0.1", false},
 		{"203.0.113.9", false},
@@ -34,6 +41,16 @@ func TestIsPublicIPv4(t *testing.T) {
 				t.Fatalf("isPublicIPv4(%q) = %v, want %v", tt.ip, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCGNATRangeIsExplainedInDiagnostic(t *testing.T) {
+	reason := ipv4NonPublicReason("100.71.23.45")
+	if !strings.Contains(reason, "CGNAT") || !strings.Contains(reason, "100.64.0.0–100.127.255.255") {
+		t.Fatalf("100.71.23.45 should identify the full CGNAT range, got %q", reason)
+	}
+	if got := ipv4NonPublicReason("100.128.0.1"); got != "" {
+		t.Fatalf("100.128.0.1 is outside the shared /10 range and must not be blocked just because it starts with 100: %q", got)
 	}
 }
 
