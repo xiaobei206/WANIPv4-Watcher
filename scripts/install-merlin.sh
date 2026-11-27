@@ -28,24 +28,26 @@ fetch() {
     url="$1"
     dest="$2"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 10 --max-time 60 "$url" -o "$dest"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -T 60 -O "$dest" "$url"
-    else
-        fail "curl or wget is required."
+        if curl -fsSL --connect-timeout 10 --max-time 120 "$url" -o "$dest"; then
+            return 0
+        fi
+        rm -f "$dest"
     fi
+    if command -v wget >/dev/null 2>&1; then
+        if wget -q -T 180 -O "$dest" "$url"; then
+            return 0
+        fi
+        rm -f "$dest"
+    fi
+    fail "download failed (curl and/or wget); verify network access or configured proxy environment."
 }
 
-json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
-
-valid_email() {
-    printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
-}
-
-if [ "$(id -u)" -ne 0 ]; then
-    fail "please SSH into the router as the administrator/root account."
+CURRENT_UID="$(awk '/^Uid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
+if [ "$CURRENT_UID" != "0" ]; then
+    if command -v id >/dev/null 2>&1; then CURRENT_UID="$(id -u 2>/dev/null || true)"; fi
+fi
+if [ "$CURRENT_UID" != "0" ]; then
+    fail "please SSH into the router as the administrator/root account (UID 0 required)."
 fi
 ARCH="$(uname -m 2>/dev/null || true)"
 case "$ARCH" in
@@ -55,15 +57,24 @@ esac
 if [ ! -d /jffs ] || [ ! -w /jffs ]; then
     fail "/jffs is not writable. Enable the JFFS partition in Merlin System settings first."
 fi
-if ! command -v nvram >/dev/null 2>&1; then
-    fail "nvram command not found; this does not look like an ASUSWRT-Merlin shell."
+NVRAM_BIN="$(command -v nvram 2>/dev/null || true)"
+if [ -z "$NVRAM_BIN" ] && [ -x /bin/nvram ]; then NVRAM_BIN="/bin/nvram"; fi
+if [ -z "$NVRAM_BIN" ]; then
+    fail "nvram command not found (checked PATH and /bin/nvram)."
 fi
-JFFS_SCRIPTS="$(nvram get jffs2_scripts 2>/dev/null || true)"
+JFFS_SCRIPTS="$("$NVRAM_BIN" get jffs2_scripts 2>/dev/null || true)"
 if [ "$JFFS_SCRIPTS" != "1" ]; then
     fail "enable 'Enable JFFS custom scripts and configs' in Administration > System, apply, then rerun this installer."
 fi
-if ! command -v sha256sum >/dev/null 2>&1 && ! command -v openssl >/dev/null 2>&1; then
-    fail "sha256sum or openssl is required to verify the release binary."
+SHA256SUM_BIN="$(command -v sha256sum 2>/dev/null || true)"
+OPENSSL_BIN="$(command -v openssl 2>/dev/null || true)"
+if [ -z "$OPENSSL_BIN" ]; then
+    for candidate in /usr/sbin/openssl /usr/bin/openssl /bin/openssl /koolshare/bin/openssl; do
+        if [ -x "$candidate" ]; then OPENSSL_BIN="$candidate"; break; fi
+    done
+fi
+if [ -z "$SHA256SUM_BIN" ] && [ -z "$OPENSSL_BIN" ]; then
+    fail "sha256sum or OpenSSL is required for SHA-256 verification (checked common Merlin/KoolShare paths)."
 fi
 
 mkdir -p "$SCRIPTS" "$CONFIG_DIR" "$APP_DIR"
@@ -76,6 +87,8 @@ fi
 if [ ! -f "$CONFIG" ]; then
     cat > "$CONFIG" <<'CONFIG_JSON'
 {
+  "device_name": "",
+  "device_note": "",
   "wan_interface": "auto",
   "check_times": ["07:00", "19:00"],
   "http_timeout_seconds": 8,
@@ -88,7 +101,7 @@ if [ ! -f "$CONFIG" ]; then
   "alert_on_private_wan": true,
   "notify_on_start": true,
   "notify_on_recovery": true,
-  "log_file": "/tmp/wanipv4-watcher.log",
+  "log_file": "",
   "web_port": 10005,
   "smtp": {
     "host": "smtp.qq.com",
@@ -113,10 +126,10 @@ fetch "$RELEASE_BASE/$ASSET" "$BIN_DOWNLOAD" || fail "could not download the ARM
 fetch "$RELEASE_BASE/checksums.txt" "$CHECKSUMS_TMP" || fail "could not download checksums.txt."
 EXPECTED="$(awk -v asset="$ASSET" '$2 == asset {print $1; exit}' "$CHECKSUMS_TMP")"
 [ -n "$EXPECTED" ] || fail "checksums.txt does not contain $ASSET."
-if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL="$(sha256sum "$BIN_DOWNLOAD" | awk '{print $1}')"
+if [ -n "$SHA256SUM_BIN" ]; then
+    ACTUAL="$("$SHA256SUM_BIN" "$BIN_DOWNLOAD" | awk '{print $1}')"
 else
-    ACTUAL="$(openssl dgst -sha256 "$BIN_DOWNLOAD" | awk '{print $NF}')"
+    ACTUAL="$("$OPENSSL_BIN" dgst -sha256 "$BIN_DOWNLOAD" | awk '{print $NF}')"
 fi
 [ "$EXPECTED" = "$ACTUAL" ] || fail "SHA-256 mismatch; existing JFFS binary was not replaced."
 cp "$BIN_DOWNLOAD" "$BIN_TMP"
@@ -158,12 +171,14 @@ chmod 755 "$STARTED"
 say "installed manager at $MANAGER and preserved other services-start content."
 say "starting the permanent JFFS binary; normal boots will not download from GitHub."
 "$MANAGER" stop >/dev/null 2>&1 || true
+# Remove legacy file-based runtime logs left by v0.3.1; v0.3.2 logs only in RAM.
+rm -f /tmp/wanipv4-watcher.log /tmp/wanipv4-watcher.log.1
 if "$MANAGER" start; then
-    say "installation complete. Open http://$(nvram get lan_ipaddr 2>/dev/null):10005 and complete configuration in the Web UI."
+    say "installation complete. Open http://$("$NVRAM_BIN" get lan_ipaddr 2>/dev/null):10005 and complete configuration in the Web UI."
 else
     say "the startup hook/config were installed, but the immediate service start failed."
     say "inspect /tmp/wanipv4-watcher-bootstrap.log and rerun: $MANAGER start"
     exit 1
 fi
 say "after saving the Web UI settings, the service activates the configured local check times."
-say "config: $CONFIG ; logs: /tmp/wanipv4-watcher.log and /tmp/wanipv4-watcher-bootstrap.log"
+say "config: $CONFIG ; runtime logs: RAM buffer (WebUI) ; startup diagnostics: /tmp/wanipv4-watcher-bootstrap.log"

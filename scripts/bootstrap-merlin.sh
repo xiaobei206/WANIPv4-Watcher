@@ -10,36 +10,55 @@ APP_DIR="/jffs/wanipv4-watcher"
 BIN="$APP_DIR/wanipv4-watcher"
 MANAGER="/jffs/scripts/wanipv4-watcher"
 PIDFILE="/tmp/wanipv4-watcher.pid"
-LOG="/tmp/wanipv4-watcher.log"
 BOOTLOG="/tmp/wanipv4-watcher-bootstrap.log"
 ASSET="wanipv4-watcher-linux-arm64"
 BASE_URL="https://github.com/${REPO}/releases/latest/download"
-
 say() { printf '%s\n' "[WANIPv4-Watcher Merlin] $*"; }
+
+NVRAM_BIN="$(command -v nvram 2>/dev/null || true)"
+if [ -z "$NVRAM_BIN" ] && [ -x /bin/nvram ]; then NVRAM_BIN="/bin/nvram"; fi
+if [ -z "$NVRAM_BIN" ]; then
+    say "ERROR: nvram command not found (checked PATH and /bin/nvram)."
+    exit 1
+fi
 
 fetch() {
     url="$1"
     dest="$2"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 10 --max-time 90 "$url" -o "$dest"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -T 90 -O "$dest" "$url"
-    else
-        say "ERROR: curl or wget is required to download the ARM64 binary."
-        return 1
+        if curl -fsSL --connect-timeout 10 --max-time 120 "$url" -o "$dest"; then
+            return 0
+        fi
+        rm -f "$dest"
     fi
+    if command -v wget >/dev/null 2>&1; then
+        if wget -q -T 180 -O "$dest" "$url"; then
+            return 0
+        fi
+        rm -f "$dest"
+    fi
+    say "ERROR: download failed (curl and/or wget); verify network access or configured proxy environment."; return 1
 }
 
 sha256_file() {
     target="$1"
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$target" | awk '{print $1}'
-    elif command -v openssl >/dev/null 2>&1; then
-        openssl dgst -sha256 "$target" | awk '{print $NF}'
-    else
-        say "ERROR: sha256sum or openssl is required; refusing to run an unchecked binary."
-        return 1
+    sha_bin="$(command -v sha256sum 2>/dev/null || true)"
+    if [ -n "$sha_bin" ]; then
+        "$sha_bin" "$target" | awk '{print $1}'
+        return $?
     fi
+    ssl_bin="$(command -v openssl 2>/dev/null || true)"
+    if [ -z "$ssl_bin" ]; then
+        for candidate in /usr/sbin/openssl /usr/bin/openssl /bin/openssl /koolshare/bin/openssl; do
+            if [ -x "$candidate" ]; then ssl_bin="$candidate"; break; fi
+        done
+    fi
+    if [ -n "$ssl_bin" ]; then
+        "$ssl_bin" dgst -sha256 "$target" | awk '{print $NF}'
+        return $?
+    fi
+    say "ERROR: SHA-256 tool missing; refusing to run an unchecked binary."
+    return 1
 }
 
 is_our_process() {
@@ -114,8 +133,9 @@ start_service() {
     fi
     ensure_config
     ensure_binary
+    : > "$BOOTLOG"
     if ! "$BIN" -config "$CONFIG" -check-config >> "$BOOTLOG" 2>&1; then
-        say "ERROR: base configuration validation failed; see $BOOTLOG and $LOG."
+        say "ERROR: base configuration validation failed; inspect startup diagnostics at $BOOTLOG and runtime logs in the Web UI RAM buffer."
         return 1
     fi
     nohup "$BIN" -config "$CONFIG" >/dev/null 2>&1 </dev/null &
@@ -123,12 +143,12 @@ start_service() {
     echo "$pid" > "$PIDFILE"
     sleep 1
     if running_pid >/dev/null 2>&1; then
-        say "started pid=$pid; complete settings in Web UI at http://$(nvram get lan_ipaddr 2>/dev/null):10005."
-        say "logs: $LOG; startup diagnostics: $BOOTLOG"
+        say "started pid=$pid; complete settings in Web UI at http://$("$NVRAM_BIN" get lan_ipaddr 2>/dev/null):10005."
+        say "runtime logs: WebUI RAM buffer; startup diagnostics: $BOOTLOG"
         return 0
     fi
     rm -f "$PIDFILE"
-    say "ERROR: process did not remain running; inspect $BOOTLOG and $LOG."
+    say "ERROR: process did not remain running; inspect startup diagnostics at $BOOTLOG and runtime logs in the Web UI RAM buffer."
     return 1
 }
 
@@ -204,7 +224,7 @@ case "${1:-start}" in
         "$BIN" -config "$CONFIG" -test-email
         ;;
     logs)
-        tail -n 100 "$LOG" 2>/dev/null || true
+        say "runtime logs are stored only in RAM and are viewed in the Web UI; below are startup diagnostics."
         tail -n 100 "$BOOTLOG" 2>/dev/null || true
         ;;
     *)

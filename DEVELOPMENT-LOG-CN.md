@@ -1,5 +1,17 @@
 # DEVELOPMENT-LOG-CN
 
+## v0.3.2 — 设备身份、逐轮通知、RAM 日志与 RT-AC86U KoolShare 适配
+
+- WebUI 新增设备昵称 / 邮件 TAG（最多 48 个字符）和备注（最多 120 个字符）；配置接口只返回是否已设置，不返回保存值，留空继续保持原值，保存后清空并折叠。
+- 正式计划检测、网页立即正式检测和 CLI `-once` 每轮都发送结果邮件：healthy 为普通优先级正常邮件；private_wan、mismatch、unknown 为高优先级告警；检测测试和 SMTP 测试邮件不提高优先级。
+- 邮件主题固定为 `[TAG正常/告警/测试] ... [WANIPv4-Watcher]`，产品标识位于末尾，便于统一搜索；RFC 2047 编码支持长中文主题分段折行。
+- 应用运行日志改为进程内 RAM 缓冲，默认 128 KiB / 7 天双上限，按需淘汰最旧记录；WebUI 查看，服务或路由器重启即清空，不写 JFFS / 文件日志。启动诊断单独保留在 `/tmp/wanipv4-watcher-bootstrap.log`，每次启动前截断。
+- 根据 RT-AC86U Merlin 386.9_0 KoolShare 实机输出修复 Shell 检测：通过 `/proc/self/status` 判断 UID 0；NVRAM 搜索 `/bin/nvram`；OpenSSL 搜索 `/usr/sbin/openssl` 等常见路径；curl 下载失败后回退 Wget；SHA-256 校验不绕过。
+- 增加 RAM 日志保留/容量、设备身份、邮件优先级、长中文主题、Web 配置脱敏测试。
+- N1 代理地址、端口和代理策略不进入仓库；下载器只支持系统标准代理环境变量，并在 curl 不可用时回退 wget。
+- CI 成功后仍需在用户的 RT-AC86U 上升级验证邮件实际投递、优先级显示、RAM 日志与开机启动。
+
+
 ## v0.3.1 — 全部首次配置统一进入 WebUI
 
 - 梅林安装器移除 WAN、QQ 邮箱、授权码、收件人及定时参数的 Shell 交互。

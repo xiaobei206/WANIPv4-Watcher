@@ -1,4 +1,4 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.3.1
+# HANDOFF-CN — WANIPv4-Watcher v0.3.2
 
 ## 项目目标
 
@@ -7,10 +7,11 @@
 ## 当前设计
 
 - 固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 检测源，至少两个来源一致才形成出口 IP 结论。
-- 默认按路由器本地时间每天 07:00、19:00 检查；程序启动时不额外执行检测。
+- 默认按路由器本地时间每天 07:00、19:00 检查；每轮正常、告警或未知结果均发送一封邮件，程序启动时不额外执行检测。
 - 使用 RFC1918、完整 100.64.0.0/10 和其他特殊用途地址分类，异常邮件包含原因说明。
-- 配置独立存放；梅林 ARM64 Go 程序永久保存在 JFFS，PID 与日志仍在 /tmp。
+- 配置独立存放；梅林 ARM64 Go 程序永久保存在 JFFS，PID 与启动诊断在 /tmp；应用运行日志仅在进程 RAM 缓冲（128 KiB / 7 天），不落盘。
 - Go 二进制内嵌 TCP 10005 极简 LAN Web 管理页，不设登录密码，只绑定 LAN bridge 私有 IPv4。
+- 邮件 TAG 由设备昵称生成，备注写入正文；告警/未知邮件带最高优先级头，正常与测试邮件普通优先级；产品标识固定在主题末尾。
 - 所有架构使用 CGO_ENABLED=0 编译，构建流程生成 SHA-256 清单与中文构建报告。
 
 ## Release 架构目标
@@ -28,9 +29,10 @@
 
 - README.md：通用手动部署、架构选择与系统专用安装入口。
 - VERSION：版本号，必须与创建 Release 的 v* 标签一致。
-- cmd/wanipv4-watcher/main.go：监控、公网检测、调度与 SMTP 告警。
-- cmd/wanipv4-watcher/web.go：内置 LAN Web 管理、配置、测试和更新。
-- cmd/wanipv4-watcher/main_test.go：地址分类、出口地址共识、默认路由和调度测试。
+- cmd/wanipv4-watcher/main.go：监控、公网检测、调度、邮件主题与 SMTP 优先级。
+- cmd/wanipv4-watcher/web.go：内置 LAN Web 管理、配置、设备 TAG、测试和更新。
+- cmd/wanipv4-watcher/memorylog.go：纯 RAM 日志缓冲与 7 天 / 128 KiB 淘汰。
+- cmd/wanipv4-watcher/main_test.go、web_test.go、memorylog_test.go、notifications_test.go：地址、配置脱敏、日志、邮件优先级与主题回归测试。
 - config.example.json：不含实际凭证的配置模板。
 - scripts/install-padavan.sh、scripts/bootstrap.sh、scripts/uninstall-padavan.sh：Padavan 安装和运行管理。
 - scripts/install-merlin.sh、scripts/bootstrap-merlin.sh、scripts/uninstall-merlin.sh：ASUSWRT-Merlin 安装、运行管理和卸载。
@@ -47,13 +49,19 @@
 - 管理器：/jffs/scripts/wanipv4-watcher。
 - 自动启动入口：/jffs/scripts/services-start 中本工具标记区块。
 - 梅林永久二进制：/jffs/wanipv4-watcher/wanipv4-watcher（安装时下载校验，重启直接运行）。
-- 日志：/tmp/wanipv4-watcher.log 与 /tmp/wanipv4-watcher-bootstrap.log。
+- 运行日志：Go 进程内存环形缓冲，WebUI 查看，最大 128 KiB / 7 天，重启清空；启动诊断：/tmp/wanipv4-watcher-bootstrap.log，每次启动截断。
 - 管理器命令：start、stop、restart、update、status、guard、menu、install-cron、check-config、once、test-email、logs。
 - watchdog：06:40、18:40 检查服务；公网 IP 检查 07:00、19:00。
 
 ## 验证边界
 
-GitHub Actions 负责自动单元测试、Go vet、Shell 语法检查和架构交叉编译。成功的 CI 只证明构建流程通过，不表示所有型号都已实机验证。RT-AC86U 当前已确认 uname -m 返回 aarch64，并且当前默认路由优先接口为 ppp0；安装后仍应在设备上验证启动、四个检测源可达性和 SMTP 投递。
+GitHub Actions 负责自动单元测试、Go vet、Shell 语法检查和架构交叉编译。成功的 CI 只证明构建流程通过，不表示所有型号都已实机验证。RT-AC86U 386.9_0 KoolShare 已实测安装并确认基础 v0.3.1 进程/WebUI 可启动；v0.3.2 的升级脚本、逐轮邮件、优先级标记及 RAM 日志仍需在设备侧验收。
+
+## v0.3.2 设备 TAG、通知与日志
+
+- WebUI 设备昵称作为邮件 TAG，设备备注只写入邮件正文；读取接口只暴露是否已配置，不回传保存值。
+- 正常检测、告警检测、unknown 每轮都发送结果邮件；高优先级只加给 private_wan、mismatch、unknown，测试邮件保持普通优先级。
+- 梅林/KoolShare：root UID 从 `/proc/self/status` 判断；NVRAM 兼容 `/bin/nvram`；SHA-256 支持 `/usr/sbin/openssl`；下载支持 curl 失败后回退 wget，不在仓库硬编码代理。
 
 ## v0.3.1 首次配置流程
 

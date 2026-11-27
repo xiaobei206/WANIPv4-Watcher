@@ -13,8 +13,12 @@ END_MARKER="# END WANIPv4-Watcher-Merlin"
 
 say() { printf '%s\n' "[WANIPv4-Watcher Merlin uninstall] $*"; }
 
-if [ "$(id -u)" -ne 0 ]; then
-    say "ERROR: please run as administrator/root over SSH."
+CURRENT_UID="$(awk '/^Uid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
+if [ "$CURRENT_UID" != "0" ]; then
+    if command -v id >/dev/null 2>&1; then CURRENT_UID="$(id -u 2>/dev/null || true)"; fi
+fi
+if [ "$CURRENT_UID" != "0" ]; then
+    say "ERROR: please run as administrator/root over SSH (UID 0 required)."
     exit 1
 fi
 

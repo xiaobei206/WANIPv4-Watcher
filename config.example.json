@@ -1,4 +1,6 @@
 {
+  "device_name": "",
+  "device_note": "",
   "wan_interface": "auto",
   "check_times": ["07:00", "19:00"],
   "http_timeout_seconds": 8,
@@ -11,7 +13,7 @@
   "alert_on_private_wan": true,
   "notify_on_start": true,
   "notify_on_recovery": true,
-  "log_file": "/tmp/wanipv4-watcher.log",
+  "log_file": "",
   "web_port": 10005,
   "smtp": {
     "host": "smtp.qq.com",

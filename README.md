@@ -1,15 +1,15 @@
 # WANIPv4-Watcher
 
-**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.3.1`。
+**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.3.2`。
 
-程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，通过 QQ 邮件发送告警与恢复通知。
+程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，每次检测都会通过 QQ 邮件发送结果；正常、告警和未知结果分别标记，支持设备昵称 TAG 与备注，异常/未知邮件带高优先级标记。
 
-版本说明与完整历史：[v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md) · [v0.2.1](docs/releases/v0.2.1-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
+版本说明与完整历史：[v0.3.2](docs/releases/v0.3.2-CN.md) · [v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md) · [v0.2.1](docs/releases/v0.2.1-CN.md) · [v0.2.2](docs/releases/v0.2.2-CN.md) · [v0.3.0](docs/releases/v0.3.0-CN.md) · [v0.3.1](docs/releases/v0.3.1-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
 
-- 默认每天按路由器本地时间 **07:00、19:00** 检查各一次，启动时不会额外检查。
-- 至少两个外部检测源返回相同的有效公网 IPv4 才形成结论；结果不足或冲突时报告 **unknown**，不猜测结论。
+- 默认每天按路由器本地时间 **07:00、19:00** 检查各一次；每轮检测结束都会发送一封邮件，启动时不会额外检查。
+- 至少两个外部检测源返回相同的有效公网 IPv4 才形成结论；结果不足或冲突时报告 **unknown**，不猜测结论，但仍发送高优先级“未知”通知。
 - 使用 Go 标准库，所有发布二进制均以 **CGO_ENABLED=0** 编译。
-- 运行文件与日志可放在 **/tmp**；持久化配置和开机启动由对应系统管理。
+- 运行日志只保存在 RAM：最多 **128 KiB**、最多 **7 天**，先到上限即淘汰旧记录；程序/路由器重启后日志清空，不写入闪存。`log_file` 仅为旧配置兼容字段，不再写文件。
 - 需要匹配 CPU 架构、大小端及浮点 ABI。已编译不等于每个路由器型号都经过实机验证。
 
 ## 1. 通用使用方法：手动下载、校验、运行
@@ -77,7 +77,7 @@ vi /etc/wanipv4-watcher.json
 
 至少修改 smtp.username、smtp.password、smtp.from、smtp.to。QQ 邮箱必须填写 **SMTP 授权码**，不是 QQ 登录密码；不要把真实授权码提交到 GitHub。wan_interface 可以设为 auto；如果设备有双默认路由、策略路由或 VPN，应填实际 WAN 接口名。external_ip_urls 会被程序固定替换为四个国内检测源。
 
-验证配置、邮件和单次检测：
+验证配置、测试邮件和单次检测（`-once` 每次都会发送本轮结果邮件）：
 
 ~~~sh
 /tmp/wanipv4-watcher -config /etc/wanipv4-watcher.json -check-config

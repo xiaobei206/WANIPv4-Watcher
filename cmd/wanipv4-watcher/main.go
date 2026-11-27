@@ -20,22 +20,20 @@ import (
 	"net/smtp"
 	"regexp"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
+	"unicode/utf8"
 	"time"
 )
 
-var version = "0.3.1"
+var version = "0.3.2"
 
 // releaseAssetName is injected by CI for the matching architecture.
 var releaseAssetName = "wanipv4-watcher-linux-arm64"
 
 const defaultConfigPath = "/etc/storage/wanipv4-watcher.json"
 const maxResponseBytes = 64 * 1024
-const maxLogBytes = 512 * 1024
 
 // The project intentionally queries only these four selected domestic services.
 // external_ip_urls remains in JSON for backwards compatibility; loadConfig
@@ -60,6 +58,8 @@ type SMTPConfig struct {
 }
 
 type Config struct {
+	DeviceName         string     `json:"device_name"`
+	DeviceNote         string     `json:"device_note"`
 	WANInterface       string     `json:"wan_interface"`
 	// IntervalSeconds is retained only to accept older configs; scheduled checks supersede it.
 	IntervalSeconds    int        `json:"interval_seconds"`
@@ -67,9 +67,10 @@ type Config struct {
 	HTTPTimeoutSeconds int        `json:"http_timeout_seconds"`
 	ExternalIPURLs     []string   `json:"external_ip_urls"`
 	AlertOnPrivateWAN  bool       `json:"alert_on_private_wan"`
+	// Retained for compatibility with existing JSON; v0.3.2 emails every completed check.
 	NotifyOnStart      bool       `json:"notify_on_start"`
 	NotifyOnRecovery   bool       `json:"notify_on_recovery"`
-	LogFile            string     `json:"log_file"`
+	LogFile            string     `json:"log_file"` // Ignored for compatibility; runtime logs are RAM-only.
 	SMTP               SMTPConfig `json:"smtp"`
 	WebPort            int        `json:"web_port"`
 }
@@ -86,40 +87,9 @@ type Observation struct {
 
 type Notice struct {
 	Subject string
-	Body    string
+	Body string
+	HighPriority bool
 }
-
-type rotatingWriter struct {
-	mu   sync.Mutex
-	path string
-}
-
-func (w *rotatingWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if err := os.MkdirAll(filepath.Dir(w.path), 0700); err != nil {
-		return 0, err
-	}
-	if info, err := os.Stat(w.path); err == nil && info.Size()+int64(len(p)) > maxLogBytes {
-		oldPath := w.path + ".1"
-		_ = os.Remove(oldPath)
-		if err := os.Rename(w.path, oldPath); err != nil && !os.IsNotExist(err) {
-			return 0, err
-		}
-	}
-	f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return 0, err
-	}
-	n, writeErr := f.Write(p)
-	closeErr := f.Close()
-	if writeErr != nil {
-		return n, writeErr
-	}
-	return n, closeErr
-}
-
 func main() {
 	configPath := flag.String("config", defaultConfigPath, "path to JSON configuration")
 	once := flag.Bool("once", false, "perform one check and exit")
@@ -139,8 +109,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "configuration error:", err)
 		os.Exit(2)
 	}
-	if cfg.LogFile != "" {
-		log.SetOutput(&rotatingWriter{path: cfg.LogFile})
+	if *checkConfig || *update || *testEmail || *once {
+		log.SetOutput(os.Stdout)
+	} else {
+		log.SetOutput(memoryLogs)
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	log.Printf("using domestic IPv4 sources only: %s", strings.Join(cfg.ExternalIPURLs, ", "))
@@ -161,10 +133,7 @@ func main() {
 	}
 	if *testEmail {
 		if err := validateSMTPConfig(cfg.SMTP); err != nil { log.Printf("SMTP configuration error: %v", err); os.Exit(2) }
-		n := Notice{
-			Subject: "[WANIPv4-Watcher] QQ 邮件发送测试",
-			Body:    fmt.Sprintf("WANIPv4-Watcher 邮件发送测试成功。\n版本：%s\n时间：%s\n\n如果你收到这封邮件，说明 SMTP 配置可用。\n", version, time.Now().Format(time.RFC3339)),
-		}
+		n := makeTestNotice(cfg)
 		if err := sendEmail(cfg.SMTP, n); err != nil {
 			log.Printf("test email failed: %v", err)
 			os.Exit(1)
@@ -177,18 +146,15 @@ func main() {
 		if err := validateSMTPConfig(cfg.SMTP); err != nil { log.Printf("SMTP configuration error: %v", err); os.Exit(2) }
 		obs := observe(cfg)
 		logObservation(obs)
-		if shouldAlert(cfg, obs) {
-			if err := sendEmail(cfg.SMTP, makeAlertNotice(obs)); err != nil {
-				log.Printf("alert email failed: %v", err)
-				os.Exit(1)
-			}
-		}
-		if obs.Status == "unknown" {
+		notice := makeObservationNotice(cfg, obs)
+		if err := sendEmail(cfg.SMTP, notice); err != nil {
+			log.Printf("check notification failed: %v", err)
 			os.Exit(1)
 		}
+		log.Printf("check notification sent: %s", notice.Subject)
+		if obs.Status == "unknown" { os.Exit(1) }
 		return
 	}
-
 	cleanupStaleUpdateBackup()
 	app := newApp(cfg, *configPath)
 	go app.serveWeb()
@@ -290,6 +256,7 @@ func validateDomesticExternalIPURLs(urls []string) error {
 }
 
 func validateBaseConfig(c Config) error {
+	if err := validateDeviceIdentity(c.DeviceName, c.DeviceNote); err != nil { return err }
 	if c.WANInterface == "" { return errors.New("wan_interface must be 'auto' or a Linux interface name") }
 	if err := validateCheckTimes(c.CheckTimes); err != nil { return err }
 	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 { return errors.New("http_timeout_seconds must be between 2 and 60") }
@@ -312,6 +279,19 @@ func validateSMTPConfig(s SMTPConfig) error {
 		if strings.Count(recipient, "@") != 1 || strings.ContainsAny(recipient, "\r\n ,") || strings.Contains(lower, "your_") || strings.Contains(lower, "example.com") {
 			return fmt.Errorf("收件邮箱无效：%q", recipient)
 		}
+	}
+	return nil
+}
+
+func validateDeviceIdentity(name, note string) error {
+	name = strings.TrimSpace(name)
+	note = strings.TrimSpace(note)
+	if len([]rune(name)) > 48 { return errors.New("device_name 最多 48 个字符") }
+	if strings.ContainsAny(name, "[]\r\n") { return errors.New("device_name 不能包含方括号或换行") }
+	if len([]rune(note)) > 120 { return errors.New("device_note 最多 120 个字符") }
+	if strings.ContainsAny(note, "\r\n") { return errors.New("device_note 不能包含换行") }
+	for _, value := range []string{name, note} {
+		for _, r := range value { if r < 32 || r == 127 { return errors.New("设备昵称和备注不能包含控制字符") } }
 	}
 	return nil
 }
@@ -714,39 +694,49 @@ func isPublicIPv4(raw string) bool {
 	return ipv4NonPublicReason(raw) == ""
 }
 
-func shouldAlert(cfg Config, obs Observation) bool {
-	if obs.Status == "private_wan" {
-		return cfg.AlertOnPrivateWAN
-	}
-	return obs.Status == "mismatch"
-}
-
-func isAbnormalStatus(status string) bool { return status == "private_wan" || status == "mismatch" }
-
 func logObservation(obs Observation) {
 	log.Printf("check: status=%s interface=%q wan_ipv4=%q external_ipv4=%q detail=%s", obs.Status, obs.Interface, obs.WANIP, obs.ExternalIP, obs.Detail)
-	for endpoint, result := range obs.ProviderResults {
-		log.Printf("provider: %s => %s", endpoint, result)
-	}
+	for endpoint, result := range obs.ProviderResults { log.Printf("provider: %s => %s", endpoint, result) }
 }
 
-func makeAlertNotice(obs Observation) Notice {
-	kind := "WAN IPv4 与公网出口 IPv4 不一致"
-	if obs.Status == "private_wan" {
-		kind = "WAN 口检测到非公网 IPv4"
+func deviceTag(cfg Config) string {
+	if name := strings.TrimSpace(cfg.DeviceName); name != "" { return name }
+	host, err := os.Hostname()
+	if err == nil && strings.TrimSpace(host) != "" { return strings.NewReplacer("[", "(", "]", ")", "\r", " ", "\n", " ").Replace(strings.TrimSpace(host)) }
+	return "未命名设备"
+}
+
+func deviceMailContext(cfg Config) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "设备昵称：%s\n", deviceTag(cfg))
+	if note := strings.TrimSpace(cfg.DeviceNote); note != "" { fmt.Fprintf(&b, "设备备注：%s\n", note) }
+	if host, err := os.Hostname(); err == nil && host != "" { fmt.Fprintf(&b, "路由器主机名：%s\n", host) }
+	fmt.Fprintf(&b, "程序版本：%s\n", version)
+	return b.String()
+}
+
+func makeTestNotice(cfg Config) Notice {
+	body := "WANIPv4-Watcher 邮件发送测试成功。\n\n" + deviceMailContext(cfg) + fmt.Sprintf("测试时间：%s\n如果你收到这封邮件，说明 SMTP 配置可用。\n", time.Now().Format(time.RFC3339))
+	return Notice{Subject: fmt.Sprintf("[%s测试] 邮件发送测试 [WANIPv4-Watcher]", deviceTag(cfg)), Body: body}
+}
+
+func makeObservationNotice(cfg Config, obs Observation) Notice {
+	if obs.Status == "healthy" {
+		body := "WANIPv4-Watcher 本轮检测正常。\n\n" + deviceMailContext(cfg) + fmt.Sprintf("检测时间：%s\n状态：%s\nWAN 网卡：%s\nWAN IPv4：%s\n公网出口 IPv4：%s\n说明：%s\n", obs.CheckedAt.Format(time.RFC3339), obs.Status, valueOr(obs.Interface, "未知"), valueOr(obs.WANIP, "未取得"), valueOr(obs.ExternalIP, "未取得"), obs.Detail)
+		return Notice{Subject: fmt.Sprintf("[%s正常] WAN 与公网出口 IPv4 一致 [WANIPv4-Watcher]", deviceTag(cfg)), Body: body}
+	}
+	kind := "本轮未能形成可靠 IPv4 结论"
+	switch obs.Status {
+	case "private_wan": kind = "WAN 口检测到非公网 IPv4"
+	case "mismatch": kind = "WAN IPv4 与公网出口 IPv4 不一致"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "WANIPv4-Watcher 检测到异常。\n\n时间：%s\n状态：%s\nWAN 网卡：%s\nWAN IPv4：%s\n公网出口 IPv4：%s\n说明：%s\n\n公网检测源：\n", obs.CheckedAt.Format(time.RFC3339), obs.Status, valueOr(obs.Interface, "未知"), valueOr(obs.WANIP, "未取得"), valueOr(obs.ExternalIP, "未取得"), obs.Detail)
-	for endpoint, result := range obs.ProviderResults {
-		fmt.Fprintf(&b, "- %s => %s\n", endpoint, result)
-	}
-	b.WriteString("\n请确认光猫工作模式、路由器 WAN 配置及电信是否再次更改了 IPv4 分配方式。仅凭地址不一致不能单独证明是运营商主动变更。\n")
-	return Notice{Subject: "[WANIPv4-Watcher] 告警：" + kind, Body: b.String()}
-}
-
-func makeRecoveryNotice(obs Observation, previous string) Notice {
-	body := fmt.Sprintf("WANIPv4-Watcher 检测到网络 IPv4 状态已恢复。\n\n时间：%s\n此前状态：%s\n当前状态：%s\nWAN 网卡：%s\nWAN IPv4：%s\n公网出口 IPv4：%s\n说明：%s\n", obs.CheckedAt.Format(time.RFC3339), previous, obs.Status, valueOr(obs.Interface, "未知"), valueOr(obs.WANIP, "未取得"), valueOr(obs.ExternalIP, "未取得"), obs.Detail)
-	return Notice{Subject: "[WANIPv4-Watcher] 恢复：WAN 与公网 IPv4 已一致", Body: body}
+	b.WriteString("WANIPv4-Watcher 本轮检测需要关注。\n\n")
+	b.WriteString(deviceMailContext(cfg))
+	fmt.Fprintf(&b, "检测时间：%s\n状态：%s\nWAN 网卡：%s\nWAN IPv4：%s\n公网出口 IPv4：%s\n说明：%s\n\n公网检测源：\n", obs.CheckedAt.Format(time.RFC3339), obs.Status, valueOr(obs.Interface, "未知"), valueOr(obs.WANIP, "未取得"), valueOr(obs.ExternalIP, "未取得"), obs.Detail)
+	for endpoint, result := range obs.ProviderResults { fmt.Fprintf(&b, "- %s => %s\n", endpoint, result) }
+	b.WriteString("\n请确认光猫工作模式、路由器 WAN 配置及运营商 IPv4 分配情况。仅凭地址不一致不能单独证明是运营商主动变更。\n")
+	return Notice{Subject: fmt.Sprintf("[%s告警] %s [WANIPv4-Watcher]", deviceTag(cfg), kind), Body: b.String(), HighPriority: true}
 }
 
 func valueOr(s, fallback string) string {
@@ -779,6 +769,36 @@ func (a *implicitTLSPlainAuth) Next(_ []byte, more bool) ([]byte, error) {
 		return nil, errors.New("unexpected continuation for SMTP PLAIN authentication")
 	}
 	return nil, nil
+}
+
+func emailPriorityHeaders(notice Notice) string {
+	if !notice.HighPriority { return "" }
+	return "X-Priority: 1 (Highest)\r\n" +
+		"Importance: High\r\n" +
+		"X-MSMail-Priority: High\r\n"
+}
+
+func encodeRFC2047Subject(subject string) string {
+	const maxChunkBytes = 42 // 56 Base64 chars plus the RFC 2047 wrapper stays below 75.
+	var words []string
+	for len(subject) > 0 {
+		end := len(subject)
+		if end > maxChunkBytes {
+			end = maxChunkBytes
+			for end > 0 && !utf8.RuneStart(subject[end]) {
+				end--
+			}
+		}
+		if end == 0 {
+			_, size := utf8.DecodeRuneInString(subject)
+			if size < 1 { size = 1 }
+			end = size
+		}
+		chunk := subject[:end]
+		words = append(words, "=?UTF-8?B?"+base64.StdEncoding.EncodeToString([]byte(chunk))+"?=")
+		subject = subject[end:]
+	}
+	return strings.Join(words, "\r\n ")
 }
 
 func sendEmail(cfg SMTPConfig, notice Notice) error {
@@ -814,7 +834,7 @@ func sendEmail(cfg SMTPConfig, notice Notice) error {
 	if err != nil {
 		return fmt.Errorf("SMTP DATA: %w", err)
 	}
-	subject := "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(notice.Subject)) + "?="
+	subject := encodeRFC2047Subject(notice.Subject)
 	toHeader := strings.Join(cfg.To, ", ")
 	body64 := base64.StdEncoding.EncodeToString([]byte(notice.Body))
 	var wrappedBody strings.Builder
@@ -829,6 +849,7 @@ func sendEmail(cfg SMTPConfig, notice Notice) error {
 	message := "From: " + cfg.From + "\r\n" +
 		"To: " + toHeader + "\r\n" +
 		"Subject: " + subject + "\r\n" +
+		emailPriorityHeaders(notice) +
 		"MIME-Version: 1.0\r\n" +
 		"Content-Type: text/plain; charset=UTF-8\r\n" +
 		"Content-Transfer-Encoding: base64\r\n\r\n" +
