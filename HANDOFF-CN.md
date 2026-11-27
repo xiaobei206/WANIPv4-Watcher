@@ -36,6 +36,7 @@
 - docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md、docs/PADAVAN-INSTALL-CN.md：Padavan 中文指南。
 - docs/TROUBLESHOOTING-CN.md：通用故障排查。
 - DEVELOPMENT-LOG-CN.md：累计开发日志。
+- CHANGELOG.md：累计版本历史；docs/releases/v版本号-CN.md：每个正式版本的独立中文发布说明。
 - .github/workflows/build.yml：单元测试、静态检查、Shell 语法检查、多架构编译、校验和、Release 和资产说明。
 
 ## ASUSWRT-Merlin 运行路径

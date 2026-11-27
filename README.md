@@ -4,6 +4,8 @@
 
 程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，通过 QQ 邮件发送告警与恢复通知。
 
+版本说明与完整历史：[v0.1.0](docs/releases/v0.1.0-CN.md) · [v0.1.1](docs/releases/v0.1.1-CN.md) · [v0.1.2](docs/releases/v0.1.2-CN.md) · [v0.1.3](docs/releases/v0.1.3-CN.md) · [v0.1.4](docs/releases/v0.1.4-CN.md) · [v0.1.5](docs/releases/v0.1.5-CN.md) · [v0.1.6](docs/releases/v0.1.6-CN.md) · [v0.2.0](docs/releases/v0.2.0-CN.md)。各正式 Release 页面也会同步展示对应版本的详细说明。
+
 - 默认每天按路由器本地时间 **07:00、19:00** 检查各一次，启动时不会额外检查。
 - 至少两个外部检测源返回相同的有效公网 IPv4 才形成结论；结果不足或冲突时报告 **unknown**，不猜测结论。
 - 使用 Go 标准库，所有发布二进制均以 **CGO_ENABLED=0** 编译。

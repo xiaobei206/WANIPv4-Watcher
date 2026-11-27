@@ -1,8 +1,15 @@
 # 更新日志（中文）
 
-本文件按版本记录 WANIPv4-Watcher 的功能变化、修复内容与验证结果。正式发布页使用对应的中文版本说明，不再只显示 GitHub 自动生成的英文比较链接。
+本文件按版本记录 WANIPv4-Watcher 的功能变化、修复内容与验证结果。点击任一版本标题可查看独立的完整中文发布说明；GitHub 正式 Release 页面也会同步展示该说明。
 
-## v0.1.6 — 完整识别 CGNAT 网段并明确告警原因
+## [v0.2.0 — 多架构构建与 ASUSWRT-Merlin 支持](docs/releases/v0.2.0-CN.md)
+
+- 从仅突出 K2P/Padavan 扩展为多架构 Linux 路由器/软路由，增加 ARM64、ARMv7、AMD64、MIPSLE/MIPS 两种大小端和浮点 ABI，以及 RISC-V 64-bit 的编译产物。
+- 新增梅林 ARM64 安装器、运行管理器、卸载器及中文安装指南；配置存放在 JFFS，运行时二进制和日志在 /tmp。
+- Release 资产增加用途标签、源码归档、中文构建报告和 SHA-256 清单。架构匹配和 CI 通过不等于所有设备均已实机验证。
+
+
+## [v0.1.6 — 完整识别 CGNAT 网段并明确告警原因](docs/releases/v0.1.6-CN.md)
 
 ### 本版重点
 
@@ -29,7 +36,7 @@
 - 尚未在实际 K2P Padavan 设备上完成完整实机验收；WAN 网卡自动识别和 QQ 邮件投递仍需设备侧确认。
 - 如果路由器位于光猫路由模式、上游 NAT 或 VPN 后面，WAN 地址非公网也可能由网络拓扑造成；地址分类本身不能单独证明运营商做了何种业务配置变更。
 
-## v0.1.5 — 精简 Padavan 启动入口
+## [v0.1.5 — 精简 Padavan 启动入口](docs/releases/v0.1.5-CN.md)
 
 - 将下载、SHA-256 校验、赋予执行权限、检查配置、启动/停止和状态管理集中到 GitHub 上的 `scripts/bootstrap.sh`。
 - Padavan 网页启动脚本只需填写发送邮箱、QQ 邮箱 SMTP 授权码和收件地址，并下载调用启动器；不必把完整 JSON 配置和长篇 shell 逻辑复制进路由器脚本。
@@ -38,7 +45,7 @@
 - 为 CI 增加启动器、安装器和卸载器的 Shell 语法检查。
 - GitHub Actions 单元测试、静态检查、MIPSLE/AMD64 构建及 v0.1.5 Release 发布均通过。
 
-## v0.1.4 — 固定使用四个国内 IPv4 检测源
+## [v0.1.4 — 固定使用四个国内 IPv4 检测源](docs/releases/v0.1.4-CN.md)
 
 - 检测源固定为 IPIP（`https://myip.ipip.net`）、3322（`http://ip.3322.net`）、CIP.cc（`https://cip.cc`）和 IP9（`https://ip9.com.cn/get`），不再访问原先的海外检测站。
 - 支持解析 IPIP/CIP.cc 的说明文本、3322 的纯文本 IPv4 和 IP9 的 JSON `data.ip` 字段。
@@ -48,7 +55,7 @@
 - GitHub Actions 单元测试、静态检查、MIPSLE/AMD64 构建与 v0.1.4 Release 发布均通过。
 - 说明：3322 的公开接口为 HTTP，程序仍会将其结果与其他来源交叉验证。
 
-## v0.1.3 — 每天固定时段检测并适配 Padavan 网页启动入口
+## [v0.1.3 — 每天固定时段检测并适配 Padavan 网页启动入口](docs/releases/v0.1.3-CN.md)
 
 - 默认按路由器本地时间每天上午 07:00 和晚上 19:00 检测，不再每 30 秒轮询，也不在启动时额外立即检测。
 - 增加 `check_times` 配置和下次计划执行时间计算；旧配置缺少此字段时使用 07:00、19:00。
@@ -57,7 +64,7 @@
 - 提供 Padavan 网页启动脚本部署文档，启动时生成临时配置、等待网络就绪、下载启动器并重试。
 - GitHub Actions 构建、测试和 v0.1.3 Release 发布通过。
 
-## v0.1.2 — 修复 Padavan 启动配置未持久化
+## [v0.1.2 — 修复 Padavan 启动配置未持久化](docs/releases/v0.1.2-CN.md)
 
 - 修复旧安装器更新 `/etc/storage/started_script.sh` 和配置后没有主动保存到闪存的问题。
 - 安装/卸载脚本调用 Padavan 的 `mtd_storage.sh save`，并在无法保存时给出明确提示。
@@ -65,14 +72,14 @@
 - 增加启动下载重试和配置模板检查，避免网络尚未就绪或仍使用模板凭证时无意义运行。
 - 更新安装、卸载及故障排查文档。
 
-## v0.1.1 — 修复 QQ SMTP TLS 认证和检测结果冲突
+## [v0.1.1 — 修复 QQ SMTP TLS 认证和检测结果冲突](docs/releases/v0.1.1-CN.md)
 
 - 修复 QQ 邮箱 SSL 465 端口的隐式 TLS 与 Go `net/smtp` 认证状态兼容问题。
 - 修正 SMTP PLAIN 认证凭据分隔符，确保发送真实 NUL 字节。
 - 修复多个检测源出现相同票数时可能不确定选择某个 IP 的问题；结果打平时改为 `unknown`。
 - 增加检测源结果打平的单元测试，并完成 Go 测试、静态检查及 MIPSLE soft-float 编译。
 
-## v0.1.0 — 首个可部署版本
+## [v0.1.0 — 首个可部署版本](docs/releases/v0.1.0-CN.md)
 
 - 使用 Go 标准库实现 WAN IPv4 读取、默认路由接口识别、外部出口 IP 查询、告警和恢复通知。
 - 要求至少两个公网检测源对出口 IPv4 达成一致，检测源故障或结果冲突时不猜测。

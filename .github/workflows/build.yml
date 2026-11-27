@@ -43,6 +43,26 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building WANIPv4-Watcher v$VERSION"
 
+      - name: Check Chinese release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          NOTES_FILE="docs/releases/v${VERSION}-CN.md"
+          if [[ ! -s "$NOTES_FILE" ]]; then
+            echo "::error::缺少中文发布说明：$NOTES_FILE"
+            exit 1
+          fi
+          while IFS= read -r TAG; do
+            [[ -n "$TAG" ]] || continue
+            TAG_VERSION="$(printf '%s' "$TAG" | sed 's/^v//')"
+            TAG_NOTES="docs/releases/v${TAG_VERSION}-CN.md"
+            if [[ ! -s "$TAG_NOTES" ]]; then
+              echo "::error::已存在版本标签 $TAG，但缺少中文发布说明 $TAG_NOTES"
+              exit 1
+            fi
+          done < <(git tag -l 'v*' | sort -V)
+
       - name: Unit tests
         run: go test ./...
 
@@ -218,13 +238,51 @@ jobs:
             fi
             echo "do_publish=true" >> "$GITHUB_OUTPUT"
           elif git ls-remote --exit-code --refs origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "Release v$VERSION already exists; main-branch build will not overwrite it."
-            echo "do_publish=false" >> "$GITHUB_OUTPUT"
+            NOTES_FILE="docs/releases/v${VERSION}-CN.md"
+            if [[ -s "$NOTES_FILE" ]] && git diff --name-only "${GITHUB_SHA}^" "$GITHUB_SHA" | grep -Fxq "$NOTES_FILE"; then
+              echo "Chinese notes changed; updating Release v$VERSION and its assets."
+              echo "do_publish=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release v$VERSION already exists; this commit does not change its version notes."
+              echo "do_publish=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "No v$VERSION tag exists yet; publishing this tested commit."
             echo "do_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+
+      - name: Update historical release-note bodies
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANGED_NOTES="$(git diff --name-only "$GITHUB_SHA^" "$GITHUB_SHA" -- 'docs/releases/v*-CN.md')"
+          if [[ -z "$CHANGED_NOTES" ]]; then
+            echo "No release-note files changed."
+            exit 0
+          fi
+          CURRENT_VERSION="$(tr -d '[:space:]' < VERSION)"
+          while IFS= read -r NOTES_FILE; do
+            [[ -n "$NOTES_FILE" ]] || continue
+            FILE_NAME="$(basename "$NOTES_FILE")"
+            RELEASE_TAG="$(printf '%s' "$FILE_NAME" | sed 's/-CN\.md$//')"
+            if [[ "$RELEASE_TAG" == "v$CURRENT_VERSION" ]]; then
+              continue
+            fi
+            if [[ ! -s "$NOTES_FILE" ]]; then
+              echo "::error::Missing or empty notes file: $NOTES_FILE"
+              exit 1
+            fi
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              echo "Updating historical release body: $RELEASE_TAG"
+              gh release edit "$RELEASE_TAG" --title "WANIPv4-Watcher $RELEASE_TAG" --notes-file "$NOTES_FILE"
+            else
+              echo "::warning::No existing GitHub Release found for $RELEASE_TAG; skipping historical body update."
+            fi
+          done <<< "$CHANGED_NOTES"
       - name: Create release with architecture assets
         id: publish-release
         if: steps.publish.outputs.do_publish == 'true'
@@ -238,20 +296,7 @@ jobs:
           overwrite_files: true
           fail_on_unmatched_files: true
           preserve_order: true
-          body: |
-            ## WANIPv4-Watcher v${{ steps.meta.outputs.version }}
-
-            ### 本版内容
-            - 增加 ARM64/AArch64、ARMv7、x86-64、MIPS 不同大小端/浮点 ABI，以及 RISC-V 64-bit 编译产物。
-            - 新增梅林 RT-AC86U 等 ARM64 设备的安装器与中文安装文档。
-            - 保留 K2P/Padavan 的 MIPSLE soft-float 稳定下载文件名和原有安装入口。
-            - 提供通用 Linux 手动部署说明、SHA-256 清单和自动构建报告。
-
-            ### 选择文件
-            请按资产文件名选择架构。右侧资产说明列列出典型设备/用途；MIPS 用户尤其要确认大小端与 soft-float/hard-float ABI。ARMv6、ARMv5 和 32 位 x86（386）不在本版构建范围。
-
-            ### 验证范围
-            GitHub Actions 执行 Go 单元测试、go vet、Shell 脚本语法检查以及全部列出架构的交叉编译。CI 通过不代表每一种路由器都完成实机验证；请以文档中的验证说明为准。
+          body_path: docs/releases/v${{ steps.meta.outputs.version }}-CN.md
           files: |
             dist/wanipv4-watcher-linux-arm64
             dist/wanipv4-watcher-linux-armv7
