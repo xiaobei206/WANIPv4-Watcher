@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-var version = "0.3.2"
+var version = "0.3.3"
 
 // releaseAssetName is injected by CI for the matching architecture.
 var releaseAssetName = "wanipv4-watcher-linux-arm64"
@@ -57,6 +57,14 @@ type SMTPConfig struct {
 	To       []string `json:"to"`
 }
 
+type UpdateProxyConfig struct {
+	Type string `json:"type"`
+	Host string `json:"host"`
+	Port int `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type Config struct {
 	DeviceName         string     `json:"device_name"`
 	DeviceNote         string     `json:"device_note"`
@@ -73,6 +81,7 @@ type Config struct {
 	LogFile            string     `json:"log_file"` // Ignored for compatibility; runtime logs are RAM-only.
 	SMTP               SMTPConfig `json:"smtp"`
 	WebPort            int        `json:"web_port"`
+	UpdateProxy        UpdateProxyConfig `json:"update_proxy"`
 }
 
 type Observation struct {
@@ -126,7 +135,7 @@ func main() {
 		return
 	}
 	if *update {
-		tag, changed, err := performSelfUpdate()
+		tag, changed, err := performSelfUpdate(cfg.UpdateProxy)
 		if err != nil { log.Printf("update failed: %v", err); os.Exit(1) }
 		if changed { fmt.Printf("updated to %s; restart the service to use it\\n", tag) } else { fmt.Printf("already up to date: %s\\n", tag) }
 		return
@@ -186,6 +195,9 @@ func loadConfig(path string) (Config, error) {
 		cfg.CheckTimes = []string{"07:00", "19:00"}
 	}
 	if cfg.WebPort == 0 { cfg.WebPort = 10005 }
+	if strings.TrimSpace(cfg.UpdateProxy.Type) == "" { cfg.UpdateProxy.Type = "direct" }
+	cfg.UpdateProxy.Type = strings.ToLower(strings.TrimSpace(cfg.UpdateProxy.Type))
+	cfg.UpdateProxy.Host = normalizeProxyHost(cfg.UpdateProxy.Host)
 	// Always pin the checker to the four selected domestic sources. This also
 	// migrates persisted Padavan configs that still contain the old overseas URLs.
 	cfg.ExternalIPURLs = domesticExternalIPURLs()
@@ -261,6 +273,7 @@ func validateBaseConfig(c Config) error {
 	if err := validateCheckTimes(c.CheckTimes); err != nil { return err }
 	if c.HTTPTimeoutSeconds < 2 || c.HTTPTimeoutSeconds > 60 { return errors.New("http_timeout_seconds must be between 2 and 60") }
 	if c.WebPort < 1 || c.WebPort > 65535 { return errors.New("web_port must be between 1 and 65535") }
+	if err := validateUpdateProxyConfig(c.UpdateProxy); err != nil { return err }
 	return validateDomesticExternalIPURLs(c.ExternalIPURLs)
 }
 

@@ -118,3 +118,51 @@ func TestConfigSavesDeviceIdentityWithoutReturningSavedValues(t *testing.T) {
 		t.Fatalf("identity-presence flags missing: %#v", public)
 	}
 }
+
+func TestUpdateProxyConfigPersistsWithoutReturningCredentials(t *testing.T) {
+	path:=t.TempDir()+"/wanipv4-watcher.json"
+	a:=newApp(Config{WANInterface:"auto",CheckTimes:[]string{"07:00","19:00"},HTTPTimeoutSeconds:8,WebPort:10005,ExternalIPURLs:domesticExternalIPURLs()},path)
+	a.lanIP="192.168.50.1"
+	mux:=http.NewServeMux()
+	mux.HandleFunc("/api/update-proxy",a.updateProxyConfig)
+	h:=a.guard(mux)
+	body:=`{"type":"socks5","host":"proxy.example.com","port":1081,"username":"proxy-user","password":"proxy-secret"}`
+	req:=httptest.NewRequest("POST","http://192.168.50.1:10005/api/update-proxy",strings.NewReader(body))
+	req.Host="192.168.50.1:10005"
+	req.Header.Set("Origin","http://192.168.50.1:10005")
+	req.Header.Set("Content-Type","application/json")
+	resp:=httptest.NewRecorder()
+	h.ServeHTTP(resp,req)
+	if resp.Code!=http.StatusOK {t.Fatalf("save proxy status=%d body=%s",resp.Code,resp.Body.String())}
+	saved,err:=loadConfig(path)
+	if err!=nil{t.Fatal(err)}
+	if saved.UpdateProxy.Type!="socks5"||saved.UpdateProxy.Host!="proxy.example.com"||saved.UpdateProxy.Port!=1081||saved.UpdateProxy.Username!="proxy-user"||saved.UpdateProxy.Password!="proxy-secret" {
+		t.Fatalf("proxy config not persisted: %#v",saved.UpdateProxy)
+	}
+	req=httptest.NewRequest("GET","http://192.168.50.1:10005/api/update-proxy",nil)
+	req.Host="192.168.50.1:10005"
+	resp=httptest.NewRecorder()
+	h.ServeHTTP(resp,req)
+	if resp.Code!=http.StatusOK {t.Fatalf("get proxy status=%d",resp.Code)}
+	var public map[string]any
+	if err=json.Unmarshal(resp.Body.Bytes(),&public);err!=nil{t.Fatal(err)}
+	for _,secret:=range []string{`"username"`,`"password"`,`proxy-user`,`proxy-secret`} {
+		if strings.Contains(resp.Body.String(),secret){t.Fatalf("proxy credentials leaked in GET response: %s",resp.Body.String())}
+	}
+	if public["type"]!="socks5"||public["host"]!="proxy.example.com"||public["port"]!=float64(1081)||public["auth_configured"]!=true {
+		t.Fatalf("proxy state missing: %#v",public)
+	}
+	body=`{"type":"socks5","clear_auth":true}`
+	req=httptest.NewRequest("POST","http://192.168.50.1:10005/api/update-proxy",strings.NewReader(body))
+	req.Host="192.168.50.1:10005"
+	req.Header.Set("Origin","http://192.168.50.1:10005")
+	req.Header.Set("Content-Type","application/json")
+	resp=httptest.NewRecorder()
+	h.ServeHTTP(resp,req)
+	if resp.Code!=http.StatusOK{t.Fatalf("clear auth status=%d body=%s",resp.Code,resp.Body.String())}
+	saved,err=loadConfig(path)
+	if err!=nil{t.Fatal(err)}
+	if saved.UpdateProxy.Host!="proxy.example.com"||saved.UpdateProxy.Port!=1081||saved.UpdateProxy.Username!=""||saved.UpdateProxy.Password!="" {
+		t.Fatalf("clear auth damaged endpoint or retained credentials: %#v",saved.UpdateProxy)
+	}
+}
