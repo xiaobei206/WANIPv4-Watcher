@@ -47,7 +47,7 @@ is_our_process() {
     [ -r "/proc/$pid/cmdline" ] || return 1
     cmdline="$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
     case "$cmdline" in
-        *"/jffs/wanipv4-watcher/wanipv4-watcher"*) return 0 ;;
+        *"/jffs/wanipv4-watcher/wanipv4-watcher"*|*"/tmp/wanipv4-watcher"*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -147,10 +147,12 @@ case "${1:-start}" in
         start_service
         ;;
     update)
-        stop_process
         ensure_config
         ensure_binary
+        # Replace the file while the old process is still mapped; if download or
+        # verification fails, leave the current service untouched.
         "$BIN" -config "$CONFIG" -update
+        stop_process
         start_service
         ;;
     guard)
@@ -173,10 +175,10 @@ case "${1:-start}" in
         printf '\\nWANIPv4-Watcher Merlin\\n1) 安装/修复\\n2) 更新\\n3) 状态\\n4) 卸载\\n5) 日志\\n0) 退出\\n选择: '
         IFS= read -r choice
         case "$choice" in
-            1) if command -v curl >/dev/null 2>&1; then curl -fsSL "$REPO_RAW/scripts/install-merlin.sh" -o /tmp/install-merlin.sh && sh /tmp/install-merlin.sh; else say "curl is required"; fi ;;
+            1) fetch "$REPO_RAW/scripts/install-merlin.sh" /tmp/install-merlin.sh && sh /tmp/install-merlin.sh ;;
             2) "$MANAGER" update ;;
             3) "$MANAGER" status || true ;;
-            4) if command -v curl >/dev/null 2>&1; then curl -fsSL "$REPO_RAW/scripts/uninstall-merlin.sh" -o /tmp/uninstall-merlin.sh && sh /tmp/uninstall-merlin.sh; fi ;;
+            4) fetch "$REPO_RAW/scripts/uninstall-merlin.sh" /tmp/uninstall-merlin.sh && sh /tmp/uninstall-merlin.sh ;;
             5) "$MANAGER" logs ;;
             *) say "exit" ;;
         esac

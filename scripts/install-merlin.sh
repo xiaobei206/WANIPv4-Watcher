@@ -200,6 +200,7 @@ chmod 755 "$STARTED"
 
 say "installed manager at $MANAGER and preserved other services-start content."
 say "starting the permanent JFFS binary; normal boots will not download from GitHub."
+"$MANAGER" stop >/dev/null 2>&1 || true
 if "$MANAGER" start; then
     say "installation complete. Check mail with: $MANAGER test-email"
 else
