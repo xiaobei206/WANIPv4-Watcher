@@ -4,6 +4,44 @@
 
 它定期读取路由器默认 IPv4 路由对应网卡的地址，并与 IPIP、3322、CIP.cc、IP9 四个国内服务返回的公网 IPv4 交叉验证。如果 WAN 口地址变成私网、运营商共享地址（CGNAT），或与公网出口地址持续不一致，就发送 QQ 邮件告警；恢复一致后发送恢复通知。
 
+
+## 快速部署到 Padavan（只需复制下面这段）
+
+进入路由器管理页面：**参数设置 → 脚本 → 在路由器启动后执行**。把下面这段追加到原有脚本末尾，**不要覆盖你已有的 TCP、drop_caches、udpxy 等命令**。只需先填写三项邮件信息：
+
+- `WANIPV4_SMTP_USER`：发送告警的 QQ 邮箱地址
+- `WANIPV4_SMTP_AUTH_CODE`：QQ 邮箱的 SMTP 授权码，不是 QQ 登录密码
+- `WANIPV4_SMTP_TO`：接收告警的邮箱地址
+
+```sh
+# --- BEGIN WANIPv4-Watcher ---
+WANIPV4_SMTP_USER='你的QQ邮箱@qq.com'
+WANIPV4_SMTP_AUTH_CODE='你的QQ邮箱授权码'
+WANIPV4_SMTP_TO='接收告警的邮箱地址'
+export WANIPV4_SMTP_USER WANIPV4_SMTP_AUTH_CODE WANIPV4_SMTP_TO
+
+(
+    sleep 5
+    URL='https://raw.githubusercontent.com/xiaobei206/WANIPv4-Watcher/main/scripts/bootstrap.sh'
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -T 60 -O /tmp/wanipv4-watcher-bootstrap.sh "$URL" ||
+        curl -fsSL --connect-timeout 10 --max-time 60 "$URL" -o /tmp/wanipv4-watcher-bootstrap.sh
+    elif command -v curl >/dev/null 2>&1; then
+        curl -fsSL --connect-timeout 10 --max-time 60 "$URL" -o /tmp/wanipv4-watcher-bootstrap.sh
+    else
+        echo '[WANIPv4-Watcher] wget/curl is missing'
+        exit 1
+    fi
+    sh -n /tmp/wanipv4-watcher-bootstrap.sh &&
+        sh /tmp/wanipv4-watcher-bootstrap.sh start
+) >/tmp/wanipv4-watcher-bootstrap.log 2>&1 &
+# --- END WANIPv4-Watcher ---
+```
+
+点页面的**应用/保存**即可。路由器启动时会自动从本仓库下载 `scripts/bootstrap.sh`；它再从 GitHub Release 下载编译好的 MIPSLE Go 程序，校验 SHA-256、设置执行权限并启动。你不需要手动下载二进制，也不需要把整套 JSON 或长脚本粘贴到路由器。
+
+邮件配置和程序运行文件在 `/tmp` 中生成，日志也保存在 `/tmp`，无需为这些文件反复写闪存。启动脚本中的三项邮箱值会随路由器配置保存；请勿把真实授权码发布到公开仓库或截图中。详细说明见 [Padavan 精简启动脚本文档](docs/PADAVAN-WEB-STARTUP-SCRIPT-CN.md)。
+
 ## 功能
 
 - 使用 Go 标准库实现，不依赖第三方 Go 模块。
