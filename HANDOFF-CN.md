@@ -1,4 +1,4 @@
-# HANDOFF-CN — WANIPv4-Watcher v0.2.1
+# HANDOFF-CN — WANIPv4-Watcher v0.3.0
 
 ## 项目目标
 
@@ -9,7 +9,8 @@
 - 固定使用 IPIP、3322、CIP.cc、IP9 四个国内 IPv4 检测源，至少两个来源一致才形成出口 IP 结论。
 - 默认按路由器本地时间每天 07:00、19:00 检查；程序启动时不额外执行检测。
 - 使用 RFC1918、完整 100.64.0.0/10 和其他特殊用途地址分类，异常邮件包含原因说明。
-- 配置独立存放；运行二进制、PID 和日志可放在 /tmp，减少不必要的闪存写入。
+- 配置独立存放；梅林 ARM64 Go 程序永久保存在 JFFS，PID 与日志仍在 /tmp。
+- Go 二进制内嵌 TCP 10005 极简 LAN Web 管理页，不设登录密码，只绑定 LAN bridge 私有 IPv4。
 - 所有架构使用 CGO_ENABLED=0 编译，构建流程生成 SHA-256 清单与中文构建报告。
 
 ## Release 架构目标
@@ -28,6 +29,7 @@
 - README.md：通用手动部署、架构选择与系统专用安装入口。
 - VERSION：版本号，必须与创建 Release 的 v* 标签一致。
 - cmd/wanipv4-watcher/main.go：监控、公网检测、调度与 SMTP 告警。
+- cmd/wanipv4-watcher/web.go：内置 LAN Web 管理、配置、测试和更新。
 - cmd/wanipv4-watcher/main_test.go：地址分类、出口地址共识、默认路由和调度测试。
 - config.example.json：不含实际凭证的配置模板。
 - scripts/install-padavan.sh、scripts/bootstrap.sh、scripts/uninstall-padavan.sh：Padavan 安装和运行管理。
@@ -44,9 +46,10 @@
 - 永久配置：/jffs/configs/wanipv4-watcher.json（权限 600）。
 - 管理器：/jffs/scripts/wanipv4-watcher。
 - 自动启动入口：/jffs/scripts/services-start 中本工具标记区块。
-- 运行时二进制：/tmp/wanipv4-watcher（每次启动从最新 Release 下载并校验）。
+- 梅林永久二进制：/jffs/wanipv4-watcher/wanipv4-watcher（安装时下载校验，重启直接运行）。
 - 日志：/tmp/wanipv4-watcher.log 与 /tmp/wanipv4-watcher-bootstrap.log。
-- 管理器命令：start、stop、restart、update、status、check-config、once、test-email、logs。
+- 管理器命令：start、stop、restart、update、status、guard、menu、install-cron、check-config、once、test-email、logs。
+- watchdog：06:40、18:40 检查服务；公网 IP 检查 07:00、19:00。
 
 ## 验证边界
 

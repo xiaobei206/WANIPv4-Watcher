@@ -12,6 +12,7 @@
   "notify_on_start": true,
   "notify_on_recovery": true,
   "log_file": "/tmp/wanipv4-watcher.log",
+  "web_port": 10005,
   "smtp": {
     "host": "smtp.qq.com",
     "port": 465,

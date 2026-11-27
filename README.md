@@ -1,6 +1,6 @@
 # WANIPv4-Watcher
 
-**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前正式版本：`0.2.2`。
+**轻量级 Linux 路由器 WAN IPv4 监控与 QQ 邮件告警工具。** 当前开发版本：`0.3.0`。
 
 程序读取路由器 WAN 接口的 IPv4，并与 IPIP、3322、CIP.cc、IP9 四个国内公网检测源交叉验证。它可以识别私网/CGNAT 地址、WAN 地址与公网出口地址不一致等异常，通过 QQ 邮件发送告警与恢复通知。
 
@@ -99,7 +99,7 @@ vi /etc/wanipv4-watcher.json
 
 ### ASUSWRT-Merlin
 
-针对 ARM64/AArch64 的 RT-AC86U 等设备，提供一条命令安装，自动创建 services-start 启动钩子，保留现有脚本内容，交互配置邮件并下载校验 ARM64 Release 文件。
+针对 ARM64/AArch64 设备提供 JFFS 永久安装和内置 Web 管理页面：程序保存于 JFFS，普通重启不重新下载；局域网通过 TCP 10005 访问，无登录密码，只绑定 LAN bridge 私有 IPv4。
 
 - 中文指南：[梅林安装、升级、测试和卸载](docs/MERLIN-INSTALL-CN.md)
 - 安装器：scripts/install-merlin.sh
